@@ -64,7 +64,10 @@
         z-index: 20;
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 16px;
+        min-width: 15ch;
+        text-align: center;
+        width: 100%;
       }
 
       .custom-file-upload {
@@ -76,6 +79,45 @@
         border-radius: 4px;
         font-size: 0.85rem;
         backdrop-filter: blur(5px);
+        width: fit-content;
+        min-width: 16ch;
+      }
+
+      .upload-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .preview-box {
+        width: 60px;
+        height: 60px;
+        width: auto;
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .preview-box img {
+        width: auto;
+        height: 100%;
+        max-width: 200px;
+        object-fit: cover;
+        border-radius: 4px;
+      }
+
+      .remove-btn {
+        background: #dc232c;
+        color: #f7e9f9;
+        border-radius: 50%;
+        width: 16px;
+        height: 16px;
+        font-size: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
       }
     </style>
   </head>
@@ -88,26 +130,32 @@
 
     <!-- Files upload -->
     <div class="upload-container">
-      <label class="custom-file-upload">
-        <input
-          type="file"
-          id="upload-bottom"
-          accept="image/*"
-          style="display: none"
-        />
-        Change bottom image
-      </label>
-      <label class="custom-file-upload">
-        <input
-          type="file"
-          id="upload-top"
-          accept="image/*"
-          style="display: none"
-        />
-        Change top image
-      </label>
-    </div>
+      <div class="upload-group">
+        <label class="custom-file-upload">
+          <input
+            type="file"
+            id="upload-bottom"
+            accept="image/*"
+            style="display: none"
+          />
+          Bottom image
+        </label>
+        <div id="bottom-preview" class="preview-box"></div>
+      </div>
 
+      <div class="upload-group">
+        <label class="custom-file-upload">
+          <input
+            type="file"
+            id="upload-top"
+            accept="image/*"
+            style="display: none"
+          />
+          Top image
+        </label>
+        <div id="top-preview" class="preview-box"></div>
+      </div>
+    </div>
     <!-- 3D Layer -->
     <div id="canvas-container"></div>
 
@@ -187,31 +235,31 @@
       const backgroundGroup = new THREE.Group();
       scene.add(backgroundGroup);
 
-      // Color blob
-      const blobTexture = textureLoader.load("images/blob.png");
-      blobTexture.colorSpace = THREE.SRGBColorSpace;
+      // Bottom image
+      const bottomTexture = textureLoader.load("images/blob.png");
+      bottomTexture.colorSpace = THREE.SRGBColorSpace;
 
-      const blobGeo = new THREE.PlaneGeometry(6, 4.8);
-      const blobMat = new THREE.MeshBasicMaterial({
-        map: blobTexture,
+      const bottomGeo = new THREE.PlaneGeometry(6, 4.8);
+      const bottomMat = new THREE.MeshBasicMaterial({
+        map: bottomTexture,
         transparent: true,
       });
-      const blobMesh = new THREE.Mesh(blobGeo, blobMat);
-      blobMesh.position.set(0, 0, -0.6); // Placed furthest back
-      backgroundGroup.add(blobMesh);
+      const bottomMesh = new THREE.Mesh(bottomGeo, bottomMat);
+      bottomMesh.position.set(0, 0, -0.6); // Placed furthest back
+      backgroundGroup.add(bottomMesh);
 
-      // SVG Signet
-      const svgTexture = textureLoader.load("images/signet.svg");
-      svgTexture.colorSpace = THREE.SRGBColorSpace;
+      // Top Image
+      const topTexture = textureLoader.load("images/signet.svg");
+      topTexture.colorSpace = THREE.SRGBColorSpace;
 
-      const svgGeo = new THREE.PlaneGeometry(2.5, 2.5);
-      const svgMat = new THREE.MeshBasicMaterial({
-        map: svgTexture,
+      const topGeo = new THREE.PlaneGeometry(2.5, 2.5);
+      const topMat = new THREE.MeshBasicMaterial({
+        map: topTexture,
         transparent: true,
       });
-      const svgMesh = new THREE.Mesh(svgGeo, svgMat);
-      svgMesh.position.set(0, 0, -0.55);
-      backgroundGroup.add(svgMesh);
+      const topMesh = new THREE.Mesh(topGeo, topMat);
+      topMesh.position.set(0, 0, -0.55);
+      backgroundGroup.add(topMesh);
 
       // --- CONFIGURATION OBJECT ---
       const config = {
@@ -404,8 +452,10 @@
         );
       });
 
-      function handleFileUpload(event, targetMaterial) {
+      function handleFileUpload(event, targetMaterial, previewId) {
         const file = event.target.files[0];
+        const previewContainer = document.getElementById(previewId);
+
         if (!file) return;
 
         const reader = new FileReader();
@@ -418,6 +468,20 @@
 
             if (targetMaterial.map) targetMaterial.map.dispose();
             targetMaterial.map = newTexture;
+            targetMaterial.visible = true;
+
+            // Render thumbnail
+            previewContainer.innerHTML = `
+        <img src="${e.target.result}" />
+        <div class="remove-btn">x</div>
+      `;
+
+            // Clear texture and preview thumbnail
+            previewContainer.querySelector(".remove-btn").onclick = () => {
+              targetMaterial.map = null;
+              targetMaterial.visible = false;
+              previewContainer.innerHTML = "";
+            };
           };
           image.src = e.target.result;
         };
@@ -427,10 +491,14 @@
       // Handle file events
       document
         .getElementById("upload-bottom")
-        .addEventListener("change", (e) => handleFileUpload(e, blobMat));
+        .addEventListener("change", (e) =>
+          handleFileUpload(e, bottomMat, "bottom-preview"),
+        );
       document
         .getElementById("upload-top")
-        .addEventListener("change", (e) => handleFileUpload(e, svgMat));
+        .addEventListener("change", (e) =>
+          handleFileUpload(e, topMat, "top-preview"),
+        );
 
       // --- ANIMATION & TWO-PASS RENDER LOOP ---
       function animate() {
