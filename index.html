@@ -166,6 +166,9 @@
         mouseIntensityX: 0.4,
         mouseIntensityY: 0.3,
         mouseEase: 0.05,
+        autoSpeed: 0.001,
+        autoIntensityX: 0.15,
+        autoIntensityY: 0.1,
       };
 
       // --- CUSTOM REED GLASS SHADER ---
@@ -281,44 +284,49 @@
       scene.add(glassMesh);
 
       // --- GUI CONFIGURATION ---
-      const gui = new GUI({ title: "Glass Parameters" });
+      const gui = new GUI({ title: "Settings" });
 
-      const folderMouse = gui.addFolder("Mouse Camera Tracking");
-      folderMouse.add(config, "mouseIntensityX", 0, 2).name("Range X");
-      folderMouse.add(config, "mouseIntensityY", 0, 2).name("Range Y");
-      folderMouse.add(config, "mouseEase", 0.01, 0.2).name("Smoothness");
+      const folderCamera = gui.addFolder("Camera Settings");
+      folderCamera.add(config, "mouseIntensityX", 0, 2).name("Range X");
+      folderCamera.add(config, "mouseIntensityY", 0, 2).name("Range Y");
+      folderCamera.add(config, "mouseEase", 0.01, 0.2).name("Smoothness");
+      folderCamera.add(config, "autoSpeed", 0, 0.005).name("Auto Speed");
+      folderCamera.add(config, "autoIntensityX", 0, 0.5).name("Auto Range X");
+      folderCamera.add(config, "autoIntensityY", 0, 0.5).name("Auto Range Y");
 
-      gui
+      const folderGlass = gui.addFolder("Glass Parameters");
+
+      folderGlass
         .add(config, "stripesCount", 5, 50, 1)
         .name("Number of stripes")
         .onChange((v) => (glassMat.uniforms.uStripesCount.value = v));
-      gui
+      folderGlass
         .add(config, "refractionStrength", 0.0, 1.0)
         .name("Refraction strength")
         .onChange((v) => (glassMat.uniforms.uRefractionStrength.value = v));
-      gui
+      folderGlass
         .add(config, "blurStrength", 0.0, 10.0)
         .name("Frosted blur")
         .onChange((v) => (glassMat.uniforms.uBlurStrength.value = v));
-      gui
+      folderGlass
         .add(config, "shatterX", 0.0, 1.0)
         .name("Shatter displacement X")
         .onChange((v) => (glassMat.uniforms.uShatterX.value = v));
-      gui
+      folderGlass
         .add(config, "shatterY", 0.0, 1.0)
         .name("Shatter displacement Y")
         .onChange((v) => (glassMat.uniforms.uShatterY.value = v));
-      gui
+      folderGlass
         .addColor(config, "glassColor")
         .name("Glass tint color")
         .onChange((v) => glassMat.uniforms.uGlassColor.value.set(v));
 
-      gui
+      folderGlass
         .add(config, "glassOpacity", 0.0, 1.0)
         .name("Glass tint opacity")
         .onChange((v) => (glassMat.uniforms.uGlassOpacity.value = v));
 
-      gui
+      folderGlass
         .add(config, "grainStrength", 0.0, 0.2)
         .name("Grain roughness")
         .onChange((v) => (glassMat.uniforms.uGrainStrength.value = v));
@@ -345,9 +353,14 @@
         backgroundMesh.position.x = 0.0;
         backgroundMesh.position.y = 0.0;
 
+        // Camera drift loop (Lemniscate of Bernoulli)
+        const time = performance.now() * config.autoSpeed;
+        const autoX = Math.sin(time) * config.autoIntensityX;
+        const autoY = (Math.sin(time * 2) / 2) * config.autoIntensityY;
+
         // Camera lerp
-        targetCamera.x = mouse.x * config.mouseIntensityX;
-        targetCamera.y = mouse.y * config.mouseIntensityY;
+        targetCamera.x = mouse.x * config.mouseIntensityX + autoX;
+        targetCamera.y = mouse.y * config.mouseIntensityY + autoY;
 
         camera.position.x +=
           (targetCamera.x - camera.position.x) * config.mouseEase;
