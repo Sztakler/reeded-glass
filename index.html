@@ -13,6 +13,7 @@
         background-color: #0a0a0a;
         touch-action: none;
         font-family: "Inter", sans-serif;
+        color: #e2ff00;
       }
       #canvas-container {
         width: 100vw;
@@ -39,7 +40,6 @@
       }
 
       .main-title {
-        color: #e2ff00;
         font-size: clamp(3.5rem, 8vw, 7rem);
         font-weight: 700;
         line-height: 0.85;
@@ -48,7 +48,6 @@
       }
 
       .subtitle {
-        color: #e2ff00;
         font-size: clamp(1.5rem, 3vw, 2.5rem);
         font-weight: 500;
         line-height: 1;
@@ -74,7 +73,6 @@
         padding: 10px 16px;
         cursor: pointer;
         background: rgba(255, 255, 255, 0.1);
-        color: #e2ff00;
         border: 1px solid rgba(255, 255, 255, 0.2);
         border-radius: 4px;
         font-size: 0.85rem;
@@ -191,6 +189,7 @@
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.domElement.id = "canvas";
       container.appendChild(renderer.domElement);
 
       // Mouse tracking
@@ -278,96 +277,98 @@
         autoIntensityX: 0.15,
         autoIntensityY: 0.1,
         cameraDistance: 3.0,
+        textColor: "#e2ff00",
+        autoColor: false,
       };
 
       // --- CUSTOM REED GLASS SHADER ---
       const vertexShader = `
-        varying vec2 vUv;
-        varying vec4 vScreenPosition;
+            varying vec2 vUv;
+            varying vec4 vScreenPosition;
 
-        void main() {
-          vUv = uv;
-          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-          gl_Position = projectionMatrix * mvPosition;
-          vScreenPosition = gl_Position;
-        }
-      `;
+            void main() {
+              vUv = uv;
+              vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+              gl_Position = projectionMatrix * mvPosition;
+              vScreenPosition = gl_Position;
+            }
+          `;
 
       const fragmentShader = `
-        varying vec2 vUv;
-        varying vec4 vScreenPosition;
+            varying vec2 vUv;
+            varying vec4 vScreenPosition;
 
-        uniform sampler2D uTransmissionMap;
+            uniform sampler2D uTransmissionMap;
 
-        uniform float uStripesCount;
+            uniform float uStripesCount;
 
-        uniform float uRefractionStrength;
-        uniform float uBlurStrength;
+            uniform float uRefractionStrength;
+            uniform float uBlurStrength;
 
-        uniform float uShatterX;
-        uniform float uShatterY;
+            uniform float uShatterX;
+            uniform float uShatterY;
 
-        uniform vec3 uGlassColor;
-        uniform float uGlassOpacity;
-        uniform float uGrainStrength;
+            uniform vec3 uGlassColor;
+            uniform float uGlassOpacity;
+            uniform float uGrainStrength;
 
 
-        vec2 hash12(float p) {
-          vec3 p3 = fract(vec3(p) * vec3(.1031, .1136, .1377));
-          p3 += dot(p3, p3.yzx + 19.19);
-          return fract((p3.xx + p3.yz) * p3.zy) * 2.0 - 1.0;
-        }
+            vec2 hash12(float p) {
+              vec3 p3 = fract(vec3(p) * vec3(.1031, .1136, .1377));
+              p3 += dot(p3, p3.yzx + 19.19);
+              return fract((p3.xx + p3.yz) * p3.zy) * 2.0 - 1.0;
+            }
 
-        float screenNoise(vec2 uv) {
-          return fract(sin(dot(uv.xy, vec2(12.9898, 78.233))) * 43758.5453123);
-        }
+            float screenNoise(vec2 uv) {
+              return fract(sin(dot(uv.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+            }
 
-        void main() {
-          vec2 screenUV = (vScreenPosition.xy / vScreenPosition.w) * 0.5 + 0.5;
+            void main() {
+              vec2 screenUV = (vScreenPosition.xy / vScreenPosition.w) * 0.5 + 0.5;
 
-          // Assign ID to each stripe
-          float stripeIndex = floor(vUv.x * uStripesCount);
-          // Divide into stripes
-          float stripeX = fract(vUv.x * uStripesCount);
+              // Assign ID to each stripe
+              float stripeIndex = floor(vUv.x * uStripesCount);
+              // Divide into stripes
+              float stripeX = fract(vUv.x * uStripesCount);
 
-          // Generate offset for each stripe
-          vec2 shatterOffset = hash12(stripeIndex);
+              // Generate offset for each stripe
+              vec2 shatterOffset = hash12(stripeIndex);
 
-          // Add refraction
-          float refractionOffset = sin((stripeX - 0.5) * 3.14159265);
+              // Add refraction
+              float refractionOffset = sin((stripeX - 0.5) * 3.14159265);
 
-          vec2 distortedUV = screenUV;
+              vec2 distortedUV = screenUV;
 
-          // X offset
-          distortedUV.x += shatterOffset.x * uShatterX * 0.1;
-          distortedUV.x += refractionOffset * uRefractionStrength * 0.1;
+              // X offset
+              distortedUV.x += shatterOffset.x * uShatterX * 0.1;
+              distortedUV.x += refractionOffset * uRefractionStrength * 0.1;
 
-          // Y Offset
-          distortedUV.y += shatterOffset.y * uShatterY * 0.1;
+              // Y Offset
+              distortedUV.y += shatterOffset.y * uShatterY * 0.1;
 
-          // Take texture samples
-          vec4 textureBlur = vec4(0.0);
-          float blurStep = uBlurStrength * 0.001;
+              // Take texture samples
+              vec4 textureBlur = vec4(0.0);
+              float blurStep = uBlurStrength * 0.001;
 
-          textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(-blurStep, -blurStep));
-          textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(blurStep, -blurStep));
-          textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(-blurStep, blurStep));
-          textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(blurStep, blurStep));
-          textureBlur += texture2D(uTransmissionMap, distortedUV) * 2.0;
-          textureBlur /= 6.0;
+              textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(-blurStep, -blurStep));
+              textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(blurStep, -blurStep));
+              textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(-blurStep, blurStep));
+              textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(blurStep, blurStep));
+              textureBlur += texture2D(uTransmissionMap, distortedUV) * 2.0;
+              textureBlur /= 6.0;
 
-          // Base tinted color for the glass plane
-          vec3 baseColor = mix(textureBlur.rgb, uGlassColor, uGlassOpacity);
+              // Base tinted color for the glass plane
+              vec3 baseColor = mix(textureBlur.rgb, uGlassColor, uGlassOpacity);
 
-          // Add grain
-          float noise = screenNoise(gl_FragCoord.xy);
-          baseColor += (noise - 0.5) * uGrainStrength;
+              // Add grain
+              float noise = screenNoise(gl_FragCoord.xy);
+              baseColor += (noise - 0.5) * uGrainStrength;
 
-          vec3 finalColor = baseColor;
+              vec3 finalColor = baseColor;
 
-          gl_FragColor = vec4(finalColor, 1.0);
-        }
-      `;
+              gl_FragColor = vec4(finalColor, 1.0);
+            }
+          `;
 
       // Cover entire viewport
       const glassGeo = new THREE.PlaneGeometry(5, 5);
@@ -441,6 +442,17 @@
         .name("Grain roughness")
         .onChange((v) => (glassMat.uniforms.uGrainStrength.value = v));
 
+      let colorController;
+
+      const folderText = gui.addFolder("Text Parameters");
+      colorController = folderText
+        .addColor(config, "textColor")
+        .name("Text Color")
+        .onChange((v) => {
+          document.querySelector("body").style.color = v;
+        });
+      folderText.add(config, "autoColor").name("Text color from image");
+
       // Resize handler
       window.addEventListener("resize", () => {
         camera.aspect = window.innerWidth / window.innerHeight;
@@ -462,6 +474,17 @@
         reader.onload = function (e) {
           const image = new Image();
           image.onload = function () {
+            if (config.autoColor) {
+              const hslValues = getDominantColor(image);
+              const hexString = hslToHex(hslValues.h, hslValues.s, hslValues.l);
+
+              document.querySelector("body").style.color = hexString;
+
+              config.textColor = hexString;
+
+              if (colorController) colorController.updateDisplay();
+            }
+
             const newTexture = new THREE.Texture(image);
             newTexture.colorSpace = THREE.SRGBColorSpace;
             newTexture.needsUpdate = true;
@@ -472,9 +495,9 @@
 
             // Render thumbnail
             previewContainer.innerHTML = `
-        <img src="${e.target.result}" />
-        <div class="remove-btn">x</div>
-      `;
+            <img src="${e.target.result}" />
+            <div class="remove-btn">x</div>
+          `;
 
             // Clear texture and preview thumbnail
             previewContainer.querySelector(".remove-btn").onclick = () => {
@@ -499,6 +522,83 @@
         .addEventListener("change", (e) =>
           handleFileUpload(e, topMat, "top-preview"),
         );
+
+      function getDominantColor(imgElement) {
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        canvas.width = 50;
+        canvas.height = 50;
+        context.drawImage(imgElement, 0, 0, 50, 50);
+
+        const data = context.getImageData(0, 0, 50, 50).data;
+        let r = 0,
+          g = 0,
+          b = 0;
+
+        for (let i = 0; i < data.length; i += 4) {
+          r += data[i];
+          g += data[i + 1];
+          b += data[i + 2];
+        }
+
+        const count = data.length / 4;
+        const hslColor = calculateHightContrastHSL(
+          Math.floor(r / count),
+          Math.floor(g / count),
+          Math.floor(b / count),
+        );
+
+        return hslColor;
+      }
+
+      function hslToHex(h, s, l) {
+        l /= 100;
+        const a = (s * Math.min(l, 1 - l)) / 100;
+        const f = (n) => {
+          const k = (n + h / 30) % 12;
+          const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+          return Math.round(255 * color)
+            .toString(16)
+            .padStart(2, "0");
+        };
+        return `#${f(0)}${f(8)}${f(4)}`;
+      }
+
+      function calculateHightContrastHSL(r, g, b) {
+        r /= 255;
+        g /= 255;
+        b /= 255;
+        const max = Math.max(r, g, b),
+          min = Math.min(r, g, b);
+        let h,
+          s,
+          l = (max + min) / 2;
+
+        if (max === min) {
+          h = s = 0;
+        } else {
+          const d = max - min;
+          s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+          switch (max) {
+            case r:
+              h = (g - b) / d + (g < b ? 6 : 0);
+              break;
+            case g:
+              h = (b - r) / d + 2;
+              break;
+            case b:
+              h = (r - g) / d + 4;
+              break;
+          }
+          h /= 6;
+        }
+
+        return {
+          h: Math.floor(h * 360),
+          s: 100,
+          l: 60,
+        };
+      }
 
       // --- ANIMATION & TWO-PASS RENDER LOOP ---
       function animate() {
