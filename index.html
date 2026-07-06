@@ -94,7 +94,7 @@
         0.1,
         100,
       );
-      camera.position.set(0, 0, 5);
+      camera.position.set(0, 0, 2);
 
       // Renderer
       const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -102,14 +102,21 @@
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       container.appendChild(renderer.domElement);
 
-      // Controls
-      const controls = new OrbitControls(camera, renderer.domElement);
-      controls.enableDamping = true;
-      // Constrain angles to maintain portrait composition and front-facing view
-      controls.maxPolarAngle = Math.PI / 2 + 0.15;
-      controls.minPolarAngle = Math.PI / 2 - 0.15;
-      controls.maxAzimuthAngle = 0.15;
-      controls.minAzimuthAngle = -0.15;
+      // Mouse tracking
+      const mouse = { x: 0, y: 0 };
+      const targetCamera = { x: 0, y: 0 };
+
+      window.addEventListener("mousemove", (event) => {
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = (event.clientY / window.innerHeight) * 2 - 1;
+      });
+
+      window.addEventListener("touchmove", (event) => {
+        if (event.touches.length > 0) {
+          mouse.x = (event.touches[0].clientX / window.innerWidth) * 2 - 1;
+          mouse.y = (event.touches[0].clientY / window.innerHeight) * 2 - 1;
+        }
+      });
 
       // Lighting
       const ambientLight = new THREE.AmbientLight("#ffffff", 0.6);
@@ -148,7 +155,6 @@
 
       // --- CONFIGURATION OBJECT ---
       const config = {
-        rotationSpeed: 0.002,
         stripesCount: 24.0,
         refractionStrength: 0.35,
         blurStrength: 2.0,
@@ -157,6 +163,9 @@
         glassColor: "#ffffff",
         glassOpacity: 0.0,
         grainStrength: 0.05,
+        mouseIntensityX: 0.4,
+        mouseIntensityY: 0.3,
+        mouseEase: 0.05,
       };
 
       // --- CUSTOM REED GLASS SHADER ---
@@ -273,7 +282,12 @@
 
       // --- GUI CONFIGURATION ---
       const gui = new GUI({ title: "Glass Parameters" });
-      gui.add(config, "rotationSpeed", 0, 0.05).name("Background speed");
+
+      const folderMouse = gui.addFolder("Mouse Camera Tracking");
+      folderMouse.add(config, "mouseIntensityX", 0, 2).name("Range X");
+      folderMouse.add(config, "mouseIntensityY", 0, 2).name("Range Y");
+      folderMouse.add(config, "mouseEase", 0.01, 0.2).name("Smoothness");
+
       gui
         .add(config, "stripesCount", 5, 50, 1)
         .name("Number of stripes")
@@ -331,7 +345,17 @@
         backgroundMesh.position.x = 0.0;
         backgroundMesh.position.y = 0.0;
 
-        controls.update();
+        // Camera lerp
+        targetCamera.x = mouse.x * config.mouseIntensityX;
+        targetCamera.y = mouse.y * config.mouseIntensityY;
+
+        camera.position.x +=
+          (targetCamera.x - camera.position.x) * config.mouseEase;
+        camera.position.y +=
+          (targetCamera.y - camera.position.y) * config.mouseEase;
+
+        // Camera focus on the scene center
+        camera.lookAt(0, 0, 0);
 
         // Render background only to the renderTarget buffer
         glassMesh.visible = false;
