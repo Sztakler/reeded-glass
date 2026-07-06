@@ -150,8 +150,6 @@
       const config = {
         rotationSpeed: 0.002,
         stripesCount: 24.0,
-        edgeShadow: 0.22,
-        edgeBlink: 0.12,
         refractionStrength: 0.35,
         blurStrength: 2.0,
         shatterX: 0.2,
@@ -181,9 +179,6 @@
         uniform sampler2D uTransmissionMap;
 
         uniform float uStripesCount;
-
-        uniform float uEdgeShadow;
-        uniform float uEdgeBlink;
 
         uniform float uRefractionStrength;
         uniform float uBlurStrength;
@@ -247,11 +242,7 @@
           float noise = screenNoise(gl_FragCoord.xy);
           baseColor += (noise - 0.5) * uGrainStrength;
 
-          // Shadow and blink
-          float shadow = smoothstep(0.0, uEdgeShadow, stripeX);
-          float blink = smoothstep(1.0 - uEdgeBlink, 1.0, stripeX);
-
-          vec3 finalColor = baseColor * shadow + (vec3(1.0) * blink * 0.25);
+          vec3 finalColor = baseColor;
 
           gl_FragColor = vec4(finalColor, 1.0);
         }
@@ -265,8 +256,6 @@
         uniforms: {
           uTransmissionMap: { value: null },
           uStripesCount: { value: config.stripesCount },
-          uEdgeShadow: { value: config.edgeShadow },
-          uEdgeBlink: { value: config.edgeBlink },
           uRefractionStrength: { value: config.refractionStrength },
           uBlurStrength: { value: config.blurStrength },
           uShatterX: { value: config.shatterX },
@@ -289,14 +278,6 @@
         .add(config, "stripesCount", 5, 50, 1)
         .name("Number of stripes")
         .onChange((v) => (glassMat.uniforms.uStripesCount.value = v));
-      gui
-        .add(config, "edgeShadow", 0.01, 0.5)
-        .name("Shadow width")
-        .onChange((v) => (glassMat.uniforms.uEdgeShadow.value = v));
-      gui
-        .add(config, "edgeBlink", 0.01, 0.5)
-        .name("Blink width")
-        .onChange((v) => (glassMat.uniforms.uEdgeBlink.value = v));
       gui
         .add(config, "refractionStrength", 0.0, 1.0)
         .name("Refraction strength")
