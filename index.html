@@ -652,25 +652,45 @@
           glassMat.uniforms.uGlassOpacity.value = config.glassOpacity;
           glassMat.uniforms.uGrainStrength.value = config.grainStrength;
 
-          // Update text color
           document.querySelector("body").style.color = config.textColor;
-
-          // Update GUI
           gui.controllersRecursive().forEach((c) => c.updateDisplay());
 
-          // Load images
           const updateTexture = (src, mat, previewId) => {
-            if (!src) return;
+            const previewContainer = document.getElementById(previewId);
+
+            // Clear images if there's no image saved in .json
+            if (!src) {
+              if (mat.map) {
+                mat.map.dispose();
+                mat.map = null;
+              }
+              mat.visible = false;
+              previewContainer.innerHTML = "";
+              return;
+            }
+
+            // Otherwise load the image
             const img = new Image();
             img.onload = () => {
               const tex = new THREE.Texture(img);
               tex.colorSpace = THREE.SRGBColorSpace;
               tex.needsUpdate = true;
+
               if (mat.map) mat.map.dispose();
               mat.map = tex;
               mat.visible = true;
-              document.getElementById(previewId).innerHTML =
-                `<img src="${src}" /><div class="remove-btn">x</div>`;
+
+              previewContainer.innerHTML = `
+          <img src="${src}" />
+          <div class="remove-btn">x</div>
+        `;
+
+              previewContainer.querySelector(".remove-btn").onclick = () => {
+                mat.map.dispose();
+                mat.map = null;
+                mat.visible = false;
+                previewContainer.innerHTML = "";
+              };
             };
             img.src = src;
           };
@@ -680,6 +700,7 @@
         };
         reader.readAsText(file);
       }
+
       // --- ANIMATION & TWO-PASS RENDER LOOP ---
       function animate() {
         requestAnimationFrame(animate);
