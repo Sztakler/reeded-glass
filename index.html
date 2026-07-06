@@ -37,7 +37,7 @@
       // --- SCENE SETUP ---
       const container = document.getElementById("canvas-container");
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color("#1a1a1a");
+      scene.background = new THREE.Color("#fefefe");
 
       // Camera
       const camera = new THREE.PerspectiveCamera(
@@ -85,8 +85,11 @@
         metalness: 0.1,
       });
       const backgroundMesh = new THREE.Mesh(torusKnotGeo, torusKnotMat);
+      const backgroundMeshCopy = new THREE.Mesh(torusKnotGeo, torusKnotMat);
       backgroundMesh.position.set(0, 0, -1);
+      backgroundMeshCopy.position.set(3, 0, -1);
       scene.add(backgroundMesh);
+      scene.add(backgroundMeshCopy);
 
       // --- CONFIGURATION OBJECT ---
       const config = {
@@ -96,6 +99,11 @@
         edgeBlink: 0.15,
         refractionStrength: 0.25,
         blurStrength: 4.0,
+        shatterX: 0.15,
+        shatterY: 0.25,
+        glassColor: "#ffffff",
+        glassOpacity: 0.3,
+        grainStrength: 0.04,
       };
 
       // --- CUSTOM REED GLASS SHADER ---
@@ -116,23 +124,55 @@
         varying vec4 vScreenPosition;
 
         uniform sampler2D uTransmissionMap;
+
         uniform float uStripesCount;
+
         uniform float uEdgeShadow;
         uniform float uEdgeBlink;
+
         uniform float uRefractionStrength;
         uniform float uBlurStrength;
+
+        uniform float uShatterX;
+        uniform float uShatterY;
+
+        uniform vec3 uGlassColor;
+        uniform float uGlassOpacity;
+        uniform float uGrainStrength;
+
+
+        vec2 hash12(float p) {
+          vec3 p3 = fract(vec3(p) * vec3(.1031, .1136, .1377));
+          p3 += dot(p3, p3.yzx + 19.19);
+          return fract((p3.xx + p3.yz) * p3.zy) * 2.0 - 1.0;
+        }
+
+        float screenNoise(vec2 uv) {
+          return fract(sin(dot(uv.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+        }
 
         void main() {
           vec2 screenUV = (vScreenPosition.xy / vScreenPosition.w) * 0.5 + 0.5;
 
+          // Assign ID to each stripe
+          float stripeIndex = floor(vUv.x * uStripesCount);
           // Divide into stripes
           float stripeX = fract(vUv.x * uStripesCount);
+
+          // Generate offset for each stripe
+          vec2 shatterOffset = hash12(stripeIndex);
 
           // Add refraction
           float refractionOffset = sin((stripeX - 0.5) * 3.14159265);
           
           vec2 distortedUV = screenUV;
+
+          // X offset
+          distortedUV.x += shatterOffset.x * uShatterX * 0.1;
           distortedUV.x += refractionOffset * uRefractionStrength * 0.1;
+
+          // Y Offset
+          distortedUV.y += shatterOffset.y * uShatterY * 0.1;
 
           // Take texture samples
           vec4 textureBlur = vec4(0.0);
@@ -146,7 +186,11 @@
           textureBlur /= 6.0;
 
           // Base tinted color for the glass plane
-          vec3 baseColor = textureBlur.rgb;
+          vec3 baseColor = mix(textureBlur.rgb, uGlassColor, uGlassOpacity);
+
+          // Add grain
+          float noise = screenNoise(gl_FragCoord.xy);
+          baseColor += (noise - 0.5) * uGrainStrength;
 
           // Shadow and blink
           float shadow = smoothstep(0.0, uEdgeShadow, stripeX);
@@ -169,6 +213,11 @@
           uEdgeBlink: { value: config.edgeBlink },
           uRefractionStrength: { value: config.refractionStrength },
           uBlurStrength: { value: config.blurStrength },
+          uShatterX: { value: config.shatterX },
+          uShatterY: { value: config.shatterY },
+          uGlassColor: { value: new THREE.Color(config.glassColor) },
+          uGlassOpacity: { value: config.glassOpacity },
+          uGrainStrength: { value: config.grainStrength },
         },
         transparent: false,
       });
@@ -200,6 +249,28 @@
         .add(config, "blurStrength", 0.0, 10.0)
         .name("Frosted blur")
         .onChange((v) => (glassMat.uniforms.uBlurStrength.value = v));
+      gui
+        .add(config, "shatterX", 0.0, 1.0)
+        .name("Shatter displacement X")
+        .onChange((v) => (glassMat.uniforms.uShatterX.value = v));
+      gui
+        .add(config, "shatterY", 0.0, 1.0)
+        .name("Shatter displacement Y")
+        .onChange((v) => (glassMat.uniforms.uShatterY.value = v));
+      gui
+        .addColor(config, "glassColor")
+        .name("Glass tint color")
+        .onChange((v) => glassMat.uniforms.uGlassColor.value.set(v));
+
+      gui
+        .add(config, "glassOpacity", 0.0, 1.0)
+        .name("Glass tint opacity")
+        .onChange((v) => (glassMat.uniforms.uGlassOpacity.value = v));
+
+      gui
+        .add(config, "grainStrength", 0.0, 0.2)
+        .name("Grain roughness")
+        .onChange((v) => (glassMat.uniforms.uGrainStrength.value = v));
 
       // Resize handler
       window.addEventListener("resize", () => {
@@ -219,6 +290,10 @@
         // Background animation
         backgroundMesh.rotation.x += config.rotationSpeed;
         backgroundMesh.rotation.y += config.rotationSpeed * 0.5;
+
+        backgroundMeshCopy.rotation.x += config.rotationSpeed;
+        backgroundMeshCopy.rotation.y += config.rotationSpeed * 0.5;
+
         controls.update();
 
         // Render background only to the renderTarget buffer
