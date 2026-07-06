@@ -4,7 +4,7 @@ An interactive WebGL poster that mimics frosted reeded glass using shaders. I've
 
 ## Showcase
 
-![Reeded Glass Effect](./reed-glass.gif)
+![Reeded Glass Effect](./images/reed-glass.gif)
 
 ## Features
 

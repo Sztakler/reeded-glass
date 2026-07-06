@@ -139,19 +139,36 @@
 
       // --- BACKGROUND OBJECTS ---
       const textureLoader = new THREE.TextureLoader();
-      const bgTexture = textureLoader.load("4.jpg");
-      bgTexture.colorSpace = THREE.SRGBColorSpace;
 
-      const torusKnotGeo = new THREE.PlaneGeometry(3.6, 4.8);
-      const torusKnotMat = new THREE.MeshBasicMaterial({
-        map: bgTexture,
+      // Group with all background elements
+      const backgroundGroup = new THREE.Group();
+      scene.add(backgroundGroup);
+
+      // Color blob
+      const blobTexture = textureLoader.load("images/blob.png");
+      blobTexture.colorSpace = THREE.SRGBColorSpace;
+
+      const blobGeo = new THREE.PlaneGeometry(6, 4.8);
+      const blobMat = new THREE.MeshBasicMaterial({
+        map: blobTexture,
+        transparent: true,
       });
+      const blobMesh = new THREE.Mesh(blobGeo, blobMat);
+      blobMesh.position.set(0, 0, -0.6); // Placed furthest back
+      backgroundGroup.add(blobMesh);
 
-      const backgroundMesh = new THREE.Mesh(torusKnotGeo, torusKnotMat);
-      const backgroundMeshCopy = new THREE.Mesh(torusKnotGeo, torusKnotMat);
+      // SVG Signet
+      const svgTexture = textureLoader.load("images/signet.svg");
+      svgTexture.colorSpace = THREE.SRGBColorSpace;
 
-      backgroundMesh.position.set(0, 0, -0.5);
-      scene.add(backgroundMesh);
+      const svgGeo = new THREE.PlaneGeometry(2.5, 2.5);
+      const svgMat = new THREE.MeshBasicMaterial({
+        map: svgTexture,
+        transparent: true,
+      });
+      const svgMesh = new THREE.Mesh(svgGeo, svgMat);
+      svgMesh.position.set(0, 0, -0.55);
+      backgroundGroup.add(svgMesh);
 
       // --- CONFIGURATION OBJECT ---
       const config = {
@@ -169,6 +186,7 @@
         autoSpeed: 0.001,
         autoIntensityX: 0.15,
         autoIntensityY: 0.1,
+        cameraDistance: 3.0,
       };
 
       // --- CUSTOM REED GLASS SHADER ---
@@ -293,6 +311,7 @@
       folderCamera.add(config, "autoSpeed", 0, 0.005).name("Auto Speed");
       folderCamera.add(config, "autoIntensityX", 0, 0.5).name("Auto Range X");
       folderCamera.add(config, "autoIntensityY", 0, 0.5).name("Auto Range Y");
+      folderCamera.add(config, "cameraDistance", 0, 10).name("Camera distance");
 
       const folderGlass = gui.addFolder("Glass Parameters");
 
@@ -346,13 +365,6 @@
       function animate() {
         requestAnimationFrame(animate);
 
-        // Background animation
-        backgroundMesh.position.x = Math.sin(performance.now() * 0.0005) * 0.2;
-        backgroundMesh.position.y = Math.cos(performance.now() * 0.0005) * 0.1;
-
-        backgroundMesh.position.x = 0.0;
-        backgroundMesh.position.y = 0.0;
-
         // Camera drift loop (Lemniscate of Bernoulli)
         const time = performance.now() * config.autoSpeed;
         const autoX = Math.sin(time) * config.autoIntensityX;
@@ -366,6 +378,8 @@
           (targetCamera.x - camera.position.x) * config.mouseEase;
         camera.position.y +=
           (targetCamera.y - camera.position.y) * config.mouseEase;
+
+        camera.position.z = config.cameraDistance;
 
         // Camera focus on the scene center
         camera.lookAt(0, 0, 0);
