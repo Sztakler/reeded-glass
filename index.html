@@ -3,21 +3,69 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Reeded glass</title>
+    <title>Reeded Glass - Poster Effect</title>
     <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@500;700&display=swap");
+
       body {
         margin: 0;
         overflow: hidden;
-        background-color: #1a1a1a;
+        background-color: #0a0a0a;
         touch-action: none;
+        font-family: "Inter", sans-serif;
       }
       #canvas-container {
         width: 100vw;
         height: 100vh;
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 1;
+      }
+
+      .poster-ui {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 10;
+        pointer-events: none;
+        box-sizing: border-box;
+        padding: 5vw;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+      }
+
+      .main-title {
+        color: #e2ff00;
+        font-size: clamp(3.5rem, 8vw, 7rem);
+        font-weight: 700;
+        line-height: 0.85;
+        letter-spacing: -0.04em;
+        margin: 0;
+      }
+
+      .subtitle {
+        color: #e2ff00;
+        font-size: clamp(1.5rem, 3vw, 2.5rem);
+        font-weight: 500;
+        line-height: 1;
+        letter-spacing: -0.02em;
+        margin-top: 1.5rem;
+        max-width: 400px;
       }
     </style>
   </head>
   <body>
+    <!-- Typography layer -->
+    <div class="poster-ui">
+      <h1 class="main-title">Reeded<br />Glass</h1>
+      <div class="subtitle">Displacement<br />System</div>
+    </div>
+
+    <!-- 3D Layer -->
     <div id="canvas-container"></div>
 
     <script type="importmap">
@@ -37,7 +85,7 @@
       // --- SCENE SETUP ---
       const container = document.getElementById("canvas-container");
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color("#fefefe");
+      scene.background = new THREE.Color("#0a0a0a");
 
       // Camera
       const camera = new THREE.PerspectiveCamera(
@@ -57,6 +105,11 @@
       // Controls
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
+      // Constrain angles to maintain portrait composition and front-facing view
+      controls.maxPolarAngle = Math.PI / 2 + 0.15;
+      controls.minPolarAngle = Math.PI / 2 - 0.15;
+      controls.maxAzimuthAngle = 0.15;
+      controls.minAzimuthAngle = -0.15;
 
       // Lighting
       const ambientLight = new THREE.AmbientLight("#ffffff", 0.6);
@@ -66,7 +119,7 @@
       dirLight.position.set(5, 5, 5);
       scene.add(dirLight);
 
-      // --- RENDER TARGET SETUP (Przechwytywanie ekranu) ---
+      // --- RENDER TARGET SETUP  ---
       const renderTarget = new THREE.WebGLRenderTarget(
         window.innerWidth * window.devicePixelRatio,
         window.innerHeight * window.devicePixelRatio,
@@ -78,32 +131,34 @@
       );
 
       // --- BACKGROUND OBJECTS ---
-      const torusKnotGeo = new THREE.TorusKnotGeometry(0.5, 0.18, 120, 16);
-      const torusKnotMat = new THREE.MeshStandardMaterial({
-        color: "#ff2a5f",
-        roughness: 0.2,
-        metalness: 0.1,
+      const textureLoader = new THREE.TextureLoader();
+      const bgTexture = textureLoader.load("4.jpg");
+      bgTexture.colorSpace = THREE.SRGBColorSpace;
+
+      const torusKnotGeo = new THREE.PlaneGeometry(3.6, 4.8);
+      const torusKnotMat = new THREE.MeshBasicMaterial({
+        map: bgTexture,
       });
+
       const backgroundMesh = new THREE.Mesh(torusKnotGeo, torusKnotMat);
       const backgroundMeshCopy = new THREE.Mesh(torusKnotGeo, torusKnotMat);
-      backgroundMesh.position.set(0, 0, -1);
-      backgroundMeshCopy.position.set(3, 0, -1);
+
+      backgroundMesh.position.set(0, 0, -0.5);
       scene.add(backgroundMesh);
-      scene.add(backgroundMeshCopy);
 
       // --- CONFIGURATION OBJECT ---
       const config = {
-        rotationSpeed: 0.01,
-        stripesCount: 15.0,
-        edgeShadow: 0.2,
-        edgeBlink: 0.15,
-        refractionStrength: 0.25,
-        blurStrength: 4.0,
-        shatterX: 0.15,
-        shatterY: 0.25,
+        rotationSpeed: 0.002,
+        stripesCount: 24.0,
+        edgeShadow: 0.22,
+        edgeBlink: 0.12,
+        refractionStrength: 0.35,
+        blurStrength: 2.0,
+        shatterX: 0.2,
+        shatterY: 0.35,
         glassColor: "#ffffff",
-        glassOpacity: 0.3,
-        grainStrength: 0.04,
+        glassOpacity: 0.0,
+        grainStrength: 0.05,
       };
 
       // --- CUSTOM REED GLASS SHADER ---
@@ -164,7 +219,7 @@
 
           // Add refraction
           float refractionOffset = sin((stripeX - 0.5) * 3.14159265);
-          
+
           vec2 distortedUV = screenUV;
 
           // X offset
@@ -177,7 +232,7 @@
           // Take texture samples
           vec4 textureBlur = vec4(0.0);
           float blurStep = uBlurStrength * 0.001;
-          
+
           textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(-blurStep, -blurStep));
           textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(blurStep, -blurStep));
           textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(-blurStep, blurStep));
@@ -202,7 +257,8 @@
         }
       `;
 
-      const glassGeo = new THREE.PlaneGeometry(2.5, 2.5);
+      // Cover entire viewport
+      const glassGeo = new THREE.PlaneGeometry(5, 5);
       const glassMat = new THREE.ShaderMaterial({
         vertexShader: vertexShader,
         fragmentShader: fragmentShader,
@@ -283,16 +339,16 @@
         );
       });
 
-      // --- CUSTOM ANIMATION & TWO-PASS RENDER LOOP ---
+      // --- ANIMATION & TWO-PASS RENDER LOOP ---
       function animate() {
         requestAnimationFrame(animate);
 
         // Background animation
-        backgroundMesh.rotation.x += config.rotationSpeed;
-        backgroundMesh.rotation.y += config.rotationSpeed * 0.5;
+        backgroundMesh.position.x = Math.sin(performance.now() * 0.0005) * 0.2;
+        backgroundMesh.position.y = Math.cos(performance.now() * 0.0005) * 0.1;
 
-        backgroundMeshCopy.rotation.x += config.rotationSpeed;
-        backgroundMeshCopy.rotation.y += config.rotationSpeed * 0.5;
+        backgroundMesh.position.x = 0.0;
+        backgroundMesh.position.y = 0.0;
 
         controls.update();
 
