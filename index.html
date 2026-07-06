@@ -453,6 +453,19 @@
         });
       folderText.add(config, "autoColor").name("Text color from image");
 
+      const folderSave = gui.addFolder("Export/Import");
+      folderSave.add({ save: saveConfig }, "save").name("Save Config (.json)");
+
+      const fileInput = document.createElement("input");
+      fileInput.type = "file";
+      fileInput.accept = ".json";
+      fileInput.style.display = "none";
+      fileInput.onchange = loadConfig;
+
+      folderSave
+        .add({ load: () => fileInput.click() }, "load")
+        .name("Load Config");
+
       // Resize handler
       window.addEventListener("resize", () => {
         camera.aspect = window.innerWidth / window.innerHeight;
@@ -600,6 +613,73 @@
         };
       }
 
+      function saveConfig() {
+        const exportData = {
+          ...config,
+          bottomImage:
+            document.querySelector("#bottom-preview img")?.src || null,
+          topImage: document.querySelector("#top-preview img")?.src || null,
+        };
+
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "config.json";
+        a.click();
+      }
+
+      function loadConfig(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const data = JSON.parse(e.target.result);
+
+          Object.assign(config, data);
+
+          // Update shader uniforms
+          glassMat.uniforms.uStripesCount.value = config.stripesCount;
+          glassMat.uniforms.uRefractionStrength.value =
+            config.refractionStrength;
+          glassMat.uniforms.uBlurStrength.value = config.blurStrength;
+          glassMat.uniforms.uShatterX.value = config.shatterX;
+          glassMat.uniforms.uShatterY.value = config.shatterY;
+          glassMat.uniforms.uGlassColor.value.set(config.glassColor);
+          glassMat.uniforms.uGlassOpacity.value = config.glassOpacity;
+          glassMat.uniforms.uGrainStrength.value = config.grainStrength;
+
+          // Update text color
+          document.querySelector("body").style.color = config.textColor;
+
+          // Update GUI
+          gui.controllersRecursive().forEach((c) => c.updateDisplay());
+
+          // Load images
+          const updateTexture = (src, mat, previewId) => {
+            if (!src) return;
+            const img = new Image();
+            img.onload = () => {
+              const tex = new THREE.Texture(img);
+              tex.colorSpace = THREE.SRGBColorSpace;
+              tex.needsUpdate = true;
+              if (mat.map) mat.map.dispose();
+              mat.map = tex;
+              mat.visible = true;
+              document.getElementById(previewId).innerHTML =
+                `<img src="${src}" /><div class="remove-btn">x</div>`;
+            };
+            img.src = src;
+          };
+
+          updateTexture(data.bottomImage, bottomMat, "bottom-preview");
+          updateTexture(data.topImage, topMat, "top-preview");
+        };
+        reader.readAsText(file);
+      }
       // --- ANIMATION & TWO-PASS RENDER LOOP ---
       function animate() {
         requestAnimationFrame(animate);
