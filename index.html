@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Three.js - Karbowane Szkło (Frosted Glass)</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background-color: #1a1a1a;
+        touch-action: none;
+      }
+      #canvas-container {
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="canvas-container"></div>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import { GUI } from "three/addons/libs/lil-gui.module.min.js";
+
+      // Scene setup
+      const container = document.getElementById("canvas-container");
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color("#1a1a1a");
+
+      // Camera
+      const camera = new THREE.PerspectiveCamera(
+        45,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        100,
+      );
+      camera.position.set(0, 0, 5);
+
+      // Renderer
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      container.appendChild(renderer.domElement);
+
+      // Camera controls
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+
+      // Lighting
+      const ambientLight = new THREE.AmbientLight("#ffffff", 0.5);
+      scene.add(ambientLight);
+
+      const dirLight = new THREE.DirectionalLight("#ffffff", 1.5);
+      dirLight.position.set(5, 5, 5);
+      dirLight.castShadow = true;
+      scene.add(dirLight);
+
+      // Test objects
+      const torusKnotGeo = new THREE.TorusKnotGeometry(0.4, 0.15, 100, 16);
+      const torusKnotMat = new THREE.MeshStandardMaterial({
+        color: "#ff2a5f",
+        roughness: 0.2,
+      });
+      const backgroundMesh = new THREE.Mesh(torusKnotGeo, torusKnotMat);
+      backgroundMesh.position.set(0, 0, -1);
+      backgroundMesh.castShadow = true;
+      backgroundMesh.receiveShadow = true;
+      scene.add(backgroundMesh);
+
+      // Shader
+      const vertexShader = `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `;
+
+      const fragmentShader = `
+        varying vec2 vUv;
+        uniform float uStripesCount;
+        uniform float uEdgeShadow;
+        uniform float uEdgeBlink;
+        uniform float uAlpha;
+
+        void main() {
+          // Divide viewport into stripes
+          float stripeX = fract(vUv.x * uStripesCount);
+
+          // Base color
+          vec3 baseColor = vec3(0.9, 0.9, 0.9);
+
+          // Add shadow to the left side of the strip
+          float shadow = smoothstep(0.0, uEdgeShadow, stripeX);
+
+          // Add blink to the right side of the strip
+          float blink = smoothstep(1.0 - uEdgeBlink, 1.0, stripeX);
+
+          // Merge effects
+          vec3 finalColor = baseColor * shadow + (vec3(1.0) * blink * 0.4);
+
+          gl_FragColor = vec4(finalColor, uAlpha);
+        }
+      `;
+
+      const config = {
+        rotationSpeed: 0.01,
+        stripesCount: 20.0,
+        edgeShadow: 0.15,
+        edgeBlink: 0.15,
+        alpha: 0.5,
+      };
+
+      const glassGeo = new THREE.PlaneGeometry(2, 2);
+      const glassMat = new THREE.ShaderMaterial({
+        vertexShader: vertexShader,
+        fragmentShader: fragmentShader,
+        uniforms: {
+          uStripesCount: { value: config.stripesCount },
+          uEdgeShadow: { value: config.edgeShadow },
+          uEdgeBlink: { value: config.edgeBlink },
+          uAlpha: { value: config.alpha },
+        },
+        transparent: true,
+      });
+
+      const glassMesh = new THREE.Mesh(glassGeo, glassMat);
+      glassMesh.position.set(0, 0, 0.5);
+      scene.add(glassMesh);
+
+      // --- GUI CONFIGURATION ---
+      const gui = new GUI({ title: "Glass Parameters" });
+      gui.add(config, "rotationSpeed", 0, 0.05).name("Background speed");
+
+      gui
+        .add(config, "stripesCount", 5, 50, 1)
+        .name("Number of stripes")
+        .onChange((v) => {
+          glassMat.uniforms.uStripesCount.value = v;
+        });
+
+      gui
+        .add(config, "edgeShadow", 0.01, 0.5)
+        .name("Shadow width")
+        .onChange((v) => {
+          glassMat.uniforms.uEdgeShadow.value = v;
+        });
+
+      gui
+        .add(config, "edgeBlink", 0.01, 0.5)
+        .name("Blink width")
+        .onChange((v) => {
+          glassMat.uniforms.uEdgeBlink.value = v;
+        });
+
+      gui
+        .add(config, "alpha", 0.0, 1.0)
+        .name("Glass opacity")
+        .onChange((v) => {
+          glassMat.uniforms.uAlpha.value = v;
+        });
+
+      // Window resize handling
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      });
+
+      // Animation loop
+      const clock = new THREE.Clock();
+
+      function animate() {
+        requestAnimationFrame(animate);
+
+        // Rotate object for reed glass effect showcasing
+        backgroundMesh.rotation.x += config.rotationSpeed;
+        backgroundMesh.rotation.y += config.rotationSpeed * 0.5;
+
+        controls.update();
+        renderer.render(scene, camera);
+      }
+
+      animate();
+    </script>
+  </body>
+</html>
