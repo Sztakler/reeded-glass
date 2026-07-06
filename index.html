@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Three.js - Karbowane Szkło (Frosted Glass)</title>
+    <title>Reeded glass</title>
     <style>
       body {
         margin: 0;
@@ -34,7 +34,7 @@
       import { OrbitControls } from "three/addons/controls/OrbitControls.js";
       import { GUI } from "three/addons/libs/lil-gui.module.min.js";
 
-      // Scene setup
+      // --- SCENE SETUP ---
       const container = document.getElementById("canvas-container");
       const scene = new THREE.Scene();
       scene.background = new THREE.Color("#1a1a1a");
@@ -52,89 +52,125 @@
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      renderer.shadowMap.enabled = true;
       container.appendChild(renderer.domElement);
 
-      // Camera controls
+      // Controls
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
 
       // Lighting
-      const ambientLight = new THREE.AmbientLight("#ffffff", 0.5);
+      const ambientLight = new THREE.AmbientLight("#ffffff", 0.6);
       scene.add(ambientLight);
 
       const dirLight = new THREE.DirectionalLight("#ffffff", 1.5);
       dirLight.position.set(5, 5, 5);
-      dirLight.castShadow = true;
       scene.add(dirLight);
 
-      // Test objects
-      const torusKnotGeo = new THREE.TorusKnotGeometry(0.4, 0.15, 100, 16);
+      // --- RENDER TARGET SETUP (Przechwytywanie ekranu) ---
+      const renderTarget = new THREE.WebGLRenderTarget(
+        window.innerWidth * window.devicePixelRatio,
+        window.innerHeight * window.devicePixelRatio,
+        {
+          minFilter: THREE.LinearFilter,
+          magFilter: THREE.LinearFilter,
+          format: THREE.RGBAFormat,
+        },
+      );
+
+      // --- BACKGROUND OBJECTS ---
+      const torusKnotGeo = new THREE.TorusKnotGeometry(0.5, 0.18, 120, 16);
       const torusKnotMat = new THREE.MeshStandardMaterial({
         color: "#ff2a5f",
         roughness: 0.2,
+        metalness: 0.1,
       });
       const backgroundMesh = new THREE.Mesh(torusKnotGeo, torusKnotMat);
       backgroundMesh.position.set(0, 0, -1);
-      backgroundMesh.castShadow = true;
-      backgroundMesh.receiveShadow = true;
       scene.add(backgroundMesh);
 
-      // Shader
+      // --- CONFIGURATION OBJECT ---
+      const config = {
+        rotationSpeed: 0.01,
+        stripesCount: 15.0,
+        edgeShadow: 0.2,
+        edgeBlink: 0.15,
+        refractionStrength: 0.25,
+        blurStrength: 4.0,
+      };
+
+      // --- CUSTOM REED GLASS SHADER ---
       const vertexShader = `
         varying vec2 vUv;
+        varying vec4 vScreenPosition;
+
         void main() {
           vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+          vScreenPosition = gl_Position;
         }
       `;
 
       const fragmentShader = `
         varying vec2 vUv;
+        varying vec4 vScreenPosition;
+
+        uniform sampler2D uTransmissionMap;
         uniform float uStripesCount;
         uniform float uEdgeShadow;
         uniform float uEdgeBlink;
-        uniform float uAlpha;
+        uniform float uRefractionStrength;
+        uniform float uBlurStrength;
 
         void main() {
-          // Divide viewport into stripes
+          vec2 screenUV = (vScreenPosition.xy / vScreenPosition.w) * 0.5 + 0.5;
+
+          // Divide into stripes
           float stripeX = fract(vUv.x * uStripesCount);
 
-          // Base color
-          vec3 baseColor = vec3(0.9, 0.9, 0.9);
+          // Add refraction
+          float refractionOffset = sin((stripeX - 0.5) * 3.14159265);
+          
+          vec2 distortedUV = screenUV;
+          distortedUV.x += refractionOffset * uRefractionStrength * 0.1;
 
-          // Add shadow to the left side of the strip
+          // Take texture samples
+          vec4 textureBlur = vec4(0.0);
+          float blurStep = uBlurStrength * 0.001;
+          
+          textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(-blurStep, -blurStep));
+          textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(blurStep, -blurStep));
+          textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(-blurStep, blurStep));
+          textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(blurStep, blurStep));
+          textureBlur += texture2D(uTransmissionMap, distortedUV) * 2.0;
+          textureBlur /= 6.0;
+
+          // Base tinted color for the glass plane
+          vec3 baseColor = textureBlur.rgb;
+
+          // Shadow and blink
           float shadow = smoothstep(0.0, uEdgeShadow, stripeX);
-
-          // Add blink to the right side of the strip
           float blink = smoothstep(1.0 - uEdgeBlink, 1.0, stripeX);
 
-          // Merge effects
-          vec3 finalColor = baseColor * shadow + (vec3(1.0) * blink * 0.4);
+          vec3 finalColor = baseColor * shadow + (vec3(1.0) * blink * 0.25);
 
-          gl_FragColor = vec4(finalColor, uAlpha);
+          gl_FragColor = vec4(finalColor, 1.0);
         }
       `;
 
-      const config = {
-        rotationSpeed: 0.01,
-        stripesCount: 20.0,
-        edgeShadow: 0.15,
-        edgeBlink: 0.15,
-        alpha: 0.5,
-      };
-
-      const glassGeo = new THREE.PlaneGeometry(2, 2);
+      const glassGeo = new THREE.PlaneGeometry(2.5, 2.5);
       const glassMat = new THREE.ShaderMaterial({
         vertexShader: vertexShader,
         fragmentShader: fragmentShader,
         uniforms: {
+          uTransmissionMap: { value: null },
           uStripesCount: { value: config.stripesCount },
           uEdgeShadow: { value: config.edgeShadow },
           uEdgeBlink: { value: config.edgeBlink },
-          uAlpha: { value: config.alpha },
+          uRefractionStrength: { value: config.refractionStrength },
+          uBlurStrength: { value: config.blurStrength },
         },
-        transparent: true,
+        transparent: false,
       });
 
       const glassMesh = new THREE.Mesh(glassGeo, glassMat);
@@ -144,54 +180,56 @@
       // --- GUI CONFIGURATION ---
       const gui = new GUI({ title: "Glass Parameters" });
       gui.add(config, "rotationSpeed", 0, 0.05).name("Background speed");
-
       gui
         .add(config, "stripesCount", 5, 50, 1)
         .name("Number of stripes")
-        .onChange((v) => {
-          glassMat.uniforms.uStripesCount.value = v;
-        });
-
+        .onChange((v) => (glassMat.uniforms.uStripesCount.value = v));
       gui
         .add(config, "edgeShadow", 0.01, 0.5)
         .name("Shadow width")
-        .onChange((v) => {
-          glassMat.uniforms.uEdgeShadow.value = v;
-        });
-
+        .onChange((v) => (glassMat.uniforms.uEdgeShadow.value = v));
       gui
         .add(config, "edgeBlink", 0.01, 0.5)
         .name("Blink width")
-        .onChange((v) => {
-          glassMat.uniforms.uEdgeBlink.value = v;
-        });
-
+        .onChange((v) => (glassMat.uniforms.uEdgeBlink.value = v));
       gui
-        .add(config, "alpha", 0.0, 1.0)
-        .name("Glass opacity")
-        .onChange((v) => {
-          glassMat.uniforms.uAlpha.value = v;
-        });
+        .add(config, "refractionStrength", 0.0, 1.0)
+        .name("Refraction strength")
+        .onChange((v) => (glassMat.uniforms.uRefractionStrength.value = v));
+      gui
+        .add(config, "blurStrength", 0.0, 10.0)
+        .name("Frosted blur")
+        .onChange((v) => (glassMat.uniforms.uBlurStrength.value = v));
 
-      // Window resize handling
+      // Resize handler
       window.addEventListener("resize", () => {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderTarget.setSize(
+          window.innerWidth * window.devicePixelRatio,
+          window.innerHeight * window.devicePixelRatio,
+        );
       });
 
-      // Animation loop
-      const clock = new THREE.Clock();
-
+      // --- CUSTOM ANIMATION & TWO-PASS RENDER LOOP ---
       function animate() {
         requestAnimationFrame(animate);
 
-        // Rotate object for reed glass effect showcasing
+        // Background animation
         backgroundMesh.rotation.x += config.rotationSpeed;
         backgroundMesh.rotation.y += config.rotationSpeed * 0.5;
-
         controls.update();
+
+        // Render background only to the renderTarget buffer
+        glassMesh.visible = false;
+        renderer.setRenderTarget(renderTarget);
+        renderer.render(scene, camera);
+
+        // Pass rendered background to the shader and apply glass effect
+        glassMat.uniforms.uTransmissionMap.value = renderTarget.texture;
+        glassMesh.visible = true;
+        renderer.setRenderTarget(null);
         renderer.render(scene, camera);
       }
 
