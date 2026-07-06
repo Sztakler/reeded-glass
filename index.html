@@ -56,6 +56,27 @@
         margin-top: 1.5rem;
         max-width: 400px;
       }
+
+      .upload-container {
+        position: absolute;
+        bottom: 5vw;
+        left: 5vw;
+        z-index: 20;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .custom-file-upload {
+        padding: 10px 16px;
+        cursor: pointer;
+        background: rgba(255, 255, 255, 0.1);
+        color: #e2ff00;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 4px;
+        font-size: 0.85rem;
+        backdrop-filter: blur(5px);
+      }
     </style>
   </head>
   <body>
@@ -63,6 +84,28 @@
     <div class="poster-ui">
       <h1 class="main-title">Reeded<br />Glass</h1>
       <div class="subtitle">Displacement<br />System</div>
+    </div>
+
+    <!-- Files upload -->
+    <div class="upload-container">
+      <label class="custom-file-upload">
+        <input
+          type="file"
+          id="upload-bottom"
+          accept="image/*"
+          style="display: none"
+        />
+        Change bottom image
+      </label>
+      <label class="custom-file-upload">
+        <input
+          type="file"
+          id="upload-top"
+          accept="image/*"
+          style="display: none"
+        />
+        Change top image
+      </label>
     </div>
 
     <!-- 3D Layer -->
@@ -360,6 +403,34 @@
           window.innerHeight * window.devicePixelRatio,
         );
       });
+
+      function handleFileUpload(event, targetMaterial) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          const image = new Image();
+          image.onload = function () {
+            const newTexture = new THREE.Texture(image);
+            newTexture.colorSpace = THREE.SRGBColorSpace;
+            newTexture.needsUpdate = true;
+
+            if (targetMaterial.map) targetMaterial.map.dispose();
+            targetMaterial.map = newTexture;
+          };
+          image.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+
+      // Handle file events
+      document
+        .getElementById("upload-bottom")
+        .addEventListener("change", (e) => handleFileUpload(e, blobMat));
+      document
+        .getElementById("upload-top")
+        .addEventListener("change", (e) => handleFileUpload(e, svgMat));
 
       // --- ANIMATION & TWO-PASS RENDER LOOP ---
       function animate() {
