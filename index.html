@@ -121,7 +121,7 @@
   </head>
   <body>
     <!-- Typography layer -->
-    <div class="poster-ui">
+    <div class="poster-ui" style="display: none">
       <h1 class="main-title">Reeded<br />Glass</h1>
       <div class="subtitle">Displacement<br />System</div>
     </div>
@@ -129,7 +129,7 @@
     <!-- Files upload -->
     <div class="upload-container">
       <div class="upload-group">
-        <label class="custom-file-upload">
+        <label class="custom-file-upload" style="display: none">
           <input
             type="file"
             id="upload-bottom"
@@ -149,7 +149,7 @@
             accept="image/*"
             style="display: none"
           />
-          Top image
+          Shader mask
         </label>
         <div id="top-preview" class="preview-box"></div>
       </div>
@@ -238,9 +238,76 @@
       const bottomTexture = textureLoader.load("images/blob.png");
       bottomTexture.colorSpace = THREE.SRGBColorSpace;
 
+      // Default mask texture (white)
+      const canvas = document.createElement("canvas");
+      canvas.width = 2;
+      canvas.height = 2;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, 0, 2, 2);
+      const defaultMask = new THREE.CanvasTexture(canvas);
+
+      // Color metaballs shader
+      const blobVertexShader = `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `;
+
+      const blobFragmentShader = `
+uniform float uTime;
+    uniform vec3 uColor1;
+    uniform vec3 uColor2;
+    uniform vec3 uColor3;
+    uniform float uSpeed;
+    uniform float uBlobSize;
+    varying vec2 vUv;
+    uniform sampler2D uMask;
+    uniform vec2 uMaskOffset;
+    uniform vec2 uMaskScale;
+
+    void main() {
+      float t = uTime * uSpeed;
+      vec2 pos1 = vec2(0.5 + sin(t) * 0.2, 0.5 + cos(t * 0.8) * 0.2);
+      vec2 pos2 = vec2(0.5 + cos(t * 1.1) * 0.25, 0.5 + sin(t * 0.5) * 0.25);
+      vec2 pos3 = vec2(0.5 + sin(t * 0.7) * 0.3, 0.5 + cos(t * 1.3) * 0.3);
+
+      float d1 = uBlobSize / length(vUv - pos1);
+      float d2 = (uBlobSize + 0.05) / length(vUv - pos2);
+      float d3 = uBlobSize / length(vUv - pos3);
+
+      vec3 finalColor = smoothstep(0.0, 1.0, d1) * uColor1 +
+                        smoothstep(0.0, 1.0, d2) * uColor2 +
+                        smoothstep(0.0, 1.0, d3) * uColor3;
+
+      vec2 maskedUv = (vUv - 0.5) / uMaskScale + 0.5 - uMaskOffset;
+      vec4 maskTex = texture2D(uMask, maskedUv);
+
+      // Don't loop mask
+      if(maskedUv.x < 0.0 || maskedUv.x > 1.0 || maskedUv.y < 0.0 || maskedUv.y > 1.0) {
+    maskTex = vec4(0.0);
+}
+
+      gl_FragColor = vec4(finalColor * maskTex.a, maskTex.a);
+    }      `;
+
       const bottomGeo = new THREE.PlaneGeometry(6, 4.8);
-      const bottomMat = new THREE.MeshBasicMaterial({
-        map: bottomTexture,
+      const bottomMat = new THREE.ShaderMaterial({
+        uniforms: {
+          uTime: { value: 0 },
+          uColor1: { value: new THREE.Color("#7494c8") },
+          uColor2: { value: new THREE.Color("#7e355f") },
+          uColor3: { value: new THREE.Color("#4e974e") },
+          uSpeed: { value: 0.3 },
+          uBlobSize: { value: 0.2 },
+          uMask: { value: defaultMask },
+          uMaskOffset: { value: new THREE.Vector2(0, 0) },
+          uMaskScale: { value: new THREE.Vector2(1, 1) },
+        },
+        vertexShader: blobVertexShader,
+        fragmentShader: blobFragmentShader,
         transparent: true,
       });
       const bottomMesh = new THREE.Mesh(bottomGeo, bottomMat);
@@ -256,9 +323,8 @@
         map: topTexture,
         transparent: true,
       });
-      const topMesh = new THREE.Mesh(topGeo, topMat);
-      topMesh.position.set(0, 0, -0.55);
-      backgroundGroup.add(topMesh);
+      // const topMesh = new THREE.Mesh(topGeo, topMat);
+      // topMesh.position.set(0, 0, -0.55);
 
       // --- CONFIGURATION OBJECT ---
       const config = {
@@ -279,6 +345,15 @@
         cameraDistance: 3.0,
         textColor: "#e2ff00",
         autoColor: false,
+        blobSpeed: 0.3,
+        blobSize: 0.2,
+        color1: "#7494c8",
+        color2: "#7e355f",
+        color3: "#4e974e",
+        maskOffsetX: 0,
+        maskOffsetY: 0,
+        maskScaleX: 1,
+        maskScaleY: 1,
       };
 
       // --- CUSTOM REED GLASS SHADER ---
@@ -408,7 +483,7 @@
       const folderGlass = gui.addFolder("Glass Parameters");
 
       folderGlass
-        .add(config, "stripesCount", 5, 50, 1)
+        .add(config, "stripesCount", 1, 100, 1)
         .name("Number of stripes")
         .onChange((v) => (glassMat.uniforms.uStripesCount.value = v));
       folderGlass
@@ -444,14 +519,14 @@
 
       let colorController;
 
-      const folderText = gui.addFolder("Text Parameters");
-      colorController = folderText
-        .addColor(config, "textColor")
-        .name("Text Color")
-        .onChange((v) => {
-          document.querySelector("body").style.color = v;
-        });
-      folderText.add(config, "autoColor").name("Text color from image");
+      // const folderText = gui.addFolder("Text Parameters");
+      // colorController = folderText
+      // .addColor(config, "textColor")
+      // .name("Text Color")
+      // .onChange((v) => {
+      // document.querySelector("body").style.color = v;
+      // });
+      // folderText.add(config, "autoColor").name("Text color from image");
 
       const folderSave = gui.addFolder("Export/Import");
       folderSave.add({ save: saveConfig }, "save").name("Save Config (.json)");
@@ -465,6 +540,44 @@
       folderSave
         .add({ load: () => fileInput.click() }, "load")
         .name("Load Config");
+
+      const folderBlobs = gui.addFolder("Background Blobs");
+
+      folderBlobs.add(config, "blobSpeed", 0, 1).onChange((v) => {
+        bottomMat.uniforms.uSpeed.value = v;
+      });
+
+      folderBlobs.add(config, "blobSize", 0.05, 0.5).onChange((v) => {
+        bottomMat.uniforms.uBlobSize.value = v;
+      });
+
+      folderBlobs.addColor(config, "color1").onChange((v) => {
+        bottomMat.uniforms.uColor1.value.set(v);
+      });
+      folderBlobs.addColor(config, "color2").onChange((v) => {
+        bottomMat.uniforms.uColor2.value.set(v);
+      });
+      folderBlobs.addColor(config, "color3").onChange((v) => {
+        bottomMat.uniforms.uColor3.value.set(v);
+      });
+
+      const folderMask = gui.addFolder("Mask Settings");
+      folderMask
+        .add(config, "maskOffsetX", -1, 1)
+        .name("Mask Offset X")
+        .onChange((v) => (bottomMat.uniforms.uMaskOffset.value.x = v));
+      folderMask
+        .add(config, "maskOffsetY", -1, 1)
+        .name("Mask Offset Y")
+        .onChange((v) => (bottomMat.uniforms.uMaskOffset.value.y = v));
+      folderMask
+        .add(config, "maskScaleX", 0.1, 5)
+        .name("Mask Scale X")
+        .onChange((v) => (bottomMat.uniforms.uMaskScale.value.x = v));
+      folderMask
+        .add(config, "maskScaleY", 0.1, 5)
+        .name("Mask Scale Y")
+        .onChange((v) => (bottomMat.uniforms.uMaskScale.value.y = v));
 
       // Resize handler
       window.addEventListener("resize", () => {
@@ -502,9 +615,12 @@
             newTexture.colorSpace = THREE.SRGBColorSpace;
             newTexture.needsUpdate = true;
 
-            if (targetMaterial.map) targetMaterial.map.dispose();
-            targetMaterial.map = newTexture;
-            targetMaterial.visible = true;
+            if (previewId === "top-preview") {
+              bottomMat.uniforms.uMask.value = newTexture;
+            } else {
+              if (targetMaterial.map) targetMaterial.map.dispose();
+              targetMaterial.map = newTexture;
+            }
 
             // Render thumbnail
             previewContainer.innerHTML = `
@@ -514,8 +630,7 @@
 
             // Clear texture and preview thumbnail
             previewContainer.querySelector(".remove-btn").onclick = () => {
-              targetMaterial.map = null;
-              targetMaterial.visible = false;
+              bottomMat.uniforms.uMask.value = defaultMask;
               previewContainer.innerHTML = "";
             };
           };
@@ -614,6 +729,11 @@
       }
 
       function saveConfig() {
+        config.maskOffsetX = bottomMat.uniforms.uMaskOffset.value.x;
+        config.maskOffsetY = bottomMat.uniforms.uMaskOffset.value.y;
+        config.maskScaleX = bottomMat.uniforms.uMaskScale.value.x;
+        config.maskScaleY = bottomMat.uniforms.uMaskScale.value.y;
+
         const exportData = {
           ...config,
           bottomImage:
@@ -652,8 +772,46 @@
           glassMat.uniforms.uGlassOpacity.value = config.glassOpacity;
           glassMat.uniforms.uGrainStrength.value = config.grainStrength;
 
+          bottomMat.uniforms.uSpeed.value = config.blobSpeed;
+          bottomMat.uniforms.uBlobSize.value = config.blobSize;
+          bottomMat.uniforms.uColor1.value.set(config.color1);
+          bottomMat.uniforms.uColor2.value.set(config.color2);
+          bottomMat.uniforms.uColor3.value.set(config.color3);
+
+          bottomMat.uniforms.uMaskOffset.value.set(
+            config.maskOffsetX,
+            config.maskOffsetY,
+          );
+          bottomMat.uniforms.uMaskScale.value.set(
+            config.maskScaleX,
+            config.maskScaleY,
+          );
+
           document.querySelector("body").style.color = config.textColor;
           gui.controllersRecursive().forEach((c) => c.updateDisplay());
+
+          const updateMaskTexture = (src) => {
+            const previewContainer = document.getElementById("top-preview");
+            if (!src) {
+              bottomMat.uniforms.uMask.value = defaultMask;
+              previewContainer.innerHTML = "";
+              return;
+            }
+            const img = new Image();
+            img.onload = () => {
+              const tex = new THREE.Texture(img);
+              tex.colorSpace = THREE.SRGBColorSpace;
+              tex.needsUpdate = true;
+              bottomMat.uniforms.uMask.value = tex;
+              previewContainer.innerHTML = `<img src="${src}" /><div class="remove-btn">x</div>`;
+              previewContainer.querySelector(".remove-btn").onclick = () => {
+                bottomMat.uniforms.uMask.value = defaultMask;
+                previewContainer.innerHTML = "";
+              };
+            };
+            img.src = src;
+          };
+          updateMaskTexture(data.topImage);
 
           const updateTexture = (src, mat, previewId) => {
             const previewContainer = document.getElementById(previewId);
@@ -686,17 +844,15 @@
         `;
 
               previewContainer.querySelector(".remove-btn").onclick = () => {
-                mat.map.dispose();
-                mat.map = null;
-                mat.visible = false;
+                bottomMat.uniforms.uMask.value = defaultMask;
                 previewContainer.innerHTML = "";
               };
             };
             img.src = src;
           };
 
-          updateTexture(data.bottomImage, bottomMat, "bottom-preview");
-          updateTexture(data.topImage, topMat, "top-preview");
+          // updateTexture(data.bottomImage, bottomMat, "bottom-preview");
+          // updateTexture(data.topImage, topMat, "top-preview");
         };
         reader.readAsText(file);
       }
@@ -709,6 +865,9 @@
         const time = performance.now() * config.autoSpeed;
         const autoX = Math.sin(time) * config.autoIntensityX;
         const autoY = (Math.sin(time * 2) / 2) * config.autoIntensityY;
+
+        // Pass uniforms to the metaball shader
+        bottomMat.uniforms.uTime.value = performance.now() * 0.001;
 
         // Camera lerp
         targetCamera.x = mouse.x * config.mouseIntensityX + autoX;
