@@ -280,12 +280,12 @@ uniform float uTime;
       const bottomMat = new THREE.ShaderMaterial({
         uniforms: {
           uTime: { value: 0 },
-          uColor1: { value: new THREE.Color("#0a1a33") },
-          uColor2: { value: new THREE.Color("#330a22") },
-          uColor3: { value: new THREE.Color("#1a331a") },
+          uColor1: { value: new THREE.Color("#7494c8") },
+          uColor2: { value: new THREE.Color("#7e355f") },
+          uColor3: { value: new THREE.Color("#4e974e") },
           uSpeed: { value: 0.3 },
           uBlobSize: { value: 0.2 },
-          uMask: { value: textureLoader.load(topImage) },
+          uMask: { value: textureLoader.load("images/signet.svg") },
         },
         vertexShader: blobVertexShader,
         fragmentShader: blobFragmentShader,
@@ -304,8 +304,8 @@ uniform float uTime;
         map: topTexture,
         transparent: true,
       });
-      const topMesh = new THREE.Mesh(topGeo, topMat);
-      topMesh.position.set(0, 0, -0.55);
+      // const topMesh = new THREE.Mesh(topGeo, topMat);
+      // topMesh.position.set(0, 0, -0.55);
 
       // --- CONFIGURATION OBJECT ---
       const config = {
@@ -328,9 +328,9 @@ uniform float uTime;
         autoColor: false,
         blobSpeed: 0.3,
         blobSize: 0.2,
-        color1: "#0a1a33",
-        color2: "#330a22",
-        color3: "#1a331a",
+        color1: "#7494c8",
+        color2: "#7e355f",
+        color3: "#4e974e",
       };
 
       // --- CUSTOM REED GLASS SHADER ---
@@ -575,9 +575,12 @@ uniform float uTime;
             newTexture.colorSpace = THREE.SRGBColorSpace;
             newTexture.needsUpdate = true;
 
-            if (targetMaterial.map) targetMaterial.map.dispose();
-            targetMaterial.map = newTexture;
-            targetMaterial.visible = true;
+            if (previewId === "top-preview") {
+              bottomMat.uniforms.uMask.value = newTexture;
+            } else {
+              if (targetMaterial.map) targetMaterial.map.dispose();
+              targetMaterial.map = newTexture;
+            }
 
             // Render thumbnail
             previewContainer.innerHTML = `
