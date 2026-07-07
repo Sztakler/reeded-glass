@@ -238,6 +238,15 @@
       const bottomTexture = textureLoader.load("images/blob.png");
       bottomTexture.colorSpace = THREE.SRGBColorSpace;
 
+      // Default mask texture (white)
+      const canvas = document.createElement("canvas");
+      canvas.width = 2;
+      canvas.height = 2;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, 0, 2, 2);
+      const defaultMask = new THREE.CanvasTexture(canvas);
+
       // Color metaballs shader
       const blobVertexShader = `
         varying vec2 vUv;
@@ -256,6 +265,8 @@ uniform float uTime;
     uniform float uBlobSize;
     varying vec2 vUv;
     uniform sampler2D uMask;
+    uniform vec2 uMaskOffset;
+    uniform vec2 uMaskScale;
 
     void main() {
       float t = uTime * uSpeed;
@@ -271,7 +282,13 @@ uniform float uTime;
                         smoothstep(0.0, 1.0, d2) * uColor2 +
                         smoothstep(0.0, 1.0, d3) * uColor3;
 
-      vec4 maskTex = texture2D(uMask, vUv);
+      vec2 maskedUv = (vUv - 0.5) / uMaskScale + 0.5 - uMaskOffset;
+      vec4 maskTex = texture2D(uMask, maskedUv);
+
+      // Don't loop mask
+      if(maskedUv.x < 0.0 || maskedUv.x > 1.0 || maskedUv.y < 0.0 || maskedUv.y > 1.0) {
+    maskTex = vec4(0.0);
+}
 
       gl_FragColor = vec4(finalColor * maskTex.a, maskTex.a);
     }      `;
@@ -285,7 +302,9 @@ uniform float uTime;
           uColor3: { value: new THREE.Color("#4e974e") },
           uSpeed: { value: 0.3 },
           uBlobSize: { value: 0.2 },
-          uMask: { value: textureLoader.load("images/signet.svg") },
+          uMask: { value: defaultMask },
+          uMaskOffset: { value: new THREE.Vector2(0, 0) },
+          uMaskScale: { value: new THREE.Vector2(1, 1) },
         },
         vertexShader: blobVertexShader,
         fragmentShader: blobFragmentShader,
@@ -331,6 +350,10 @@ uniform float uTime;
         color1: "#7494c8",
         color2: "#7e355f",
         color3: "#4e974e",
+        maskOffsetX: 0,
+        maskOffsetY: 0,
+        maskScaleX: 1,
+        maskScaleY: 1,
       };
 
       // --- CUSTOM REED GLASS SHADER ---
@@ -496,14 +519,14 @@ uniform float uTime;
 
       let colorController;
 
-      const folderText = gui.addFolder("Text Parameters");
-      colorController = folderText
-        .addColor(config, "textColor")
-        .name("Text Color")
-        .onChange((v) => {
-          document.querySelector("body").style.color = v;
-        });
-      folderText.add(config, "autoColor").name("Text color from image");
+      // const folderText = gui.addFolder("Text Parameters");
+      // colorController = folderText
+      // .addColor(config, "textColor")
+      // .name("Text Color")
+      // .onChange((v) => {
+      // document.querySelector("body").style.color = v;
+      // });
+      // folderText.add(config, "autoColor").name("Text color from image");
 
       const folderSave = gui.addFolder("Export/Import");
       folderSave.add({ save: saveConfig }, "save").name("Save Config (.json)");
@@ -528,7 +551,6 @@ uniform float uTime;
         bottomMat.uniforms.uBlobSize.value = v;
       });
 
-      // Dla kolorów używamy .listen() jeśli chcemy, by GUI odzwierciedlało zmiany
       folderBlobs.addColor(config, "color1").onChange((v) => {
         bottomMat.uniforms.uColor1.value.set(v);
       });
@@ -538,6 +560,24 @@ uniform float uTime;
       folderBlobs.addColor(config, "color3").onChange((v) => {
         bottomMat.uniforms.uColor3.value.set(v);
       });
+
+      const folderMask = gui.addFolder("Mask Settings");
+      folderMask
+        .add(config, "maskOffsetX", -1, 1)
+        .name("Mask Offset X")
+        .onChange((v) => (bottomMat.uniforms.uMaskOffset.value.x = v));
+      folderMask
+        .add(config, "maskOffsetY", -1, 1)
+        .name("Mask Offset Y")
+        .onChange((v) => (bottomMat.uniforms.uMaskOffset.value.y = v));
+      folderMask
+        .add(config, "maskScaleX", 0.1, 5)
+        .name("Mask Scale X")
+        .onChange((v) => (bottomMat.uniforms.uMaskScale.value.x = v));
+      folderMask
+        .add(config, "maskScaleY", 0.1, 5)
+        .name("Mask Scale Y")
+        .onChange((v) => (bottomMat.uniforms.uMaskScale.value.y = v));
 
       // Resize handler
       window.addEventListener("resize", () => {
@@ -590,8 +630,7 @@ uniform float uTime;
 
             // Clear texture and preview thumbnail
             previewContainer.querySelector(".remove-btn").onclick = () => {
-              targetMaterial.map = null;
-              targetMaterial.visible = false;
+              bottomMat.uniforms.uMask.value = defaultMask;
               previewContainer.innerHTML = "";
             };
           };
@@ -690,6 +729,11 @@ uniform float uTime;
       }
 
       function saveConfig() {
+        config.maskOffsetX = bottomMat.uniforms.uMaskOffset.value.x;
+        config.maskOffsetY = bottomMat.uniforms.uMaskOffset.value.y;
+        config.maskScaleX = bottomMat.uniforms.uMaskScale.value.x;
+        config.maskScaleY = bottomMat.uniforms.uMaskScale.value.y;
+
         const exportData = {
           ...config,
           bottomImage:
@@ -728,8 +772,46 @@ uniform float uTime;
           glassMat.uniforms.uGlassOpacity.value = config.glassOpacity;
           glassMat.uniforms.uGrainStrength.value = config.grainStrength;
 
+          bottomMat.uniforms.uSpeed.value = config.blobSpeed;
+          bottomMat.uniforms.uBlobSize.value = config.blobSize;
+          bottomMat.uniforms.uColor1.value.set(config.color1);
+          bottomMat.uniforms.uColor2.value.set(config.color2);
+          bottomMat.uniforms.uColor3.value.set(config.color3);
+
+          bottomMat.uniforms.uMaskOffset.value.set(
+            config.maskOffsetX,
+            config.maskOffsetY,
+          );
+          bottomMat.uniforms.uMaskScale.value.set(
+            config.maskScaleX,
+            config.maskScaleY,
+          );
+
           document.querySelector("body").style.color = config.textColor;
           gui.controllersRecursive().forEach((c) => c.updateDisplay());
+
+          const updateMaskTexture = (src) => {
+            const previewContainer = document.getElementById("top-preview");
+            if (!src) {
+              bottomMat.uniforms.uMask.value = defaultMask;
+              previewContainer.innerHTML = "";
+              return;
+            }
+            const img = new Image();
+            img.onload = () => {
+              const tex = new THREE.Texture(img);
+              tex.colorSpace = THREE.SRGBColorSpace;
+              tex.needsUpdate = true;
+              bottomMat.uniforms.uMask.value = tex;
+              previewContainer.innerHTML = `<img src="${src}" /><div class="remove-btn">x</div>`;
+              previewContainer.querySelector(".remove-btn").onclick = () => {
+                bottomMat.uniforms.uMask.value = defaultMask;
+                previewContainer.innerHTML = "";
+              };
+            };
+            img.src = src;
+          };
+          updateMaskTexture(data.topImage);
 
           const updateTexture = (src, mat, previewId) => {
             const previewContainer = document.getElementById(previewId);
@@ -762,17 +844,15 @@ uniform float uTime;
         `;
 
               previewContainer.querySelector(".remove-btn").onclick = () => {
-                mat.map.dispose();
-                mat.map = null;
-                mat.visible = false;
+                bottomMat.uniforms.uMask.value = defaultMask;
                 previewContainer.innerHTML = "";
               };
             };
             img.src = src;
           };
 
-          updateTexture(data.bottomImage, bottomMat, "bottom-preview");
-          updateTexture(data.topImage, topMat, "top-preview");
+          // updateTexture(data.bottomImage, bottomMat, "bottom-preview");
+          // updateTexture(data.topImage, topMat, "top-preview");
         };
         reader.readAsText(file);
       }
