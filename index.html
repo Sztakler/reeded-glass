@@ -121,7 +121,7 @@
   </head>
   <body>
     <!-- Typography layer -->
-    <div class="poster-ui">
+    <div class="poster-ui" style="display: none">
       <h1 class="main-title">Reeded<br />Glass</h1>
       <div class="subtitle">Displacement<br />System</div>
     </div>
@@ -129,7 +129,7 @@
     <!-- Files upload -->
     <div class="upload-container">
       <div class="upload-group">
-        <label class="custom-file-upload">
+        <label class="custom-file-upload" style="display: none">
           <input
             type="file"
             id="upload-bottom"
@@ -149,7 +149,7 @@
             accept="image/*"
             style="display: none"
           />
-          Top image
+          Shader mask
         </label>
         <div id="top-preview" class="preview-box"></div>
       </div>
@@ -255,6 +255,7 @@ uniform float uTime;
     uniform float uSpeed;
     uniform float uBlobSize;
     varying vec2 vUv;
+    uniform sampler2D uMask;
 
     void main() {
       float t = uTime * uSpeed;
@@ -270,7 +271,9 @@ uniform float uTime;
                         smoothstep(0.0, 1.0, d2) * uColor2 +
                         smoothstep(0.0, 1.0, d3) * uColor3;
 
-      gl_FragColor = vec4(finalColor * 0.6, 1.0);
+      vec4 maskTex = texture2D(uMask, vUv);
+
+      gl_FragColor = vec4(finalColor * maskTex.a, maskTex.a);
     }      `;
 
       const bottomGeo = new THREE.PlaneGeometry(6, 4.8);
@@ -282,6 +285,7 @@ uniform float uTime;
           uColor3: { value: new THREE.Color("#1a331a") },
           uSpeed: { value: 0.3 },
           uBlobSize: { value: 0.2 },
+          uMask: { value: textureLoader.load(topImage) },
         },
         vertexShader: blobVertexShader,
         fragmentShader: blobFragmentShader,
@@ -456,7 +460,7 @@ uniform float uTime;
       const folderGlass = gui.addFolder("Glass Parameters");
 
       folderGlass
-        .add(config, "stripesCount", 5, 50, 1)
+        .add(config, "stripesCount", 1, 100, 1)
         .name("Number of stripes")
         .onChange((v) => (glassMat.uniforms.uStripesCount.value = v));
       folderGlass
