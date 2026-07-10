@@ -189,6 +189,7 @@
         glassOpacity: 0.05,
 
         grainStrength: 0.025,
+        logoScale: 1,
       };
       // ======================================================
       // RENDERER
@@ -317,6 +318,8 @@
 
       logoTexture.minFilter = THREE.LinearFilter;
       logoTexture.magFilter = THREE.LinearFilter;
+      logoTexture.wrapS = THREE.ClampToEdgeWrapping;
+      logoTexture.wrapT = THREE.ClampToEdgeWrapping;
 
       // ======================================================
       // RENDER TARGET
@@ -473,6 +476,9 @@
           uLogo: {
             value: logoTexture,
           },
+          uLogoScale: {
+            value: 1.0,
+          },
         },
 
         vertexShader: `
@@ -499,6 +505,7 @@
       uniform sampler2D uNoiseMap;
       uniform float uWarpStrength;
       uniform sampler2D uLogo;
+      uniform float uLogoScale;
 
       float hash(vec2 p) {
           return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -539,7 +546,13 @@
 
           float blobs = smoothstep(0.7, 0.9, d);
 
-          float logoAlpha = texture2D(uLogo, vUv).a;
+          vec2 centeredUv = vUv - 0.5;
+          vec2 scaledUv = centeredUv / uLogoScale;
+          vec2 finalLogoUv = scaledUv + 0.5;
+          float logoAlpha = 0.0;
+          if(finalLogoUv.x >= 0.0 && finalLogoUv.x <= 1.0 && finalLogoUv.y >= 0.0 && finalLogoUv.y <= 1.0) {
+              logoAlpha = texture2D(uLogo, finalLogoUv).a;
+          }
 
           vec3 colorA = vec3(0.08, 0.06, 0.05);
           vec3 colorB = vec3(0.9098, 0.4863, 0.1333);
@@ -592,6 +605,10 @@
       gui
         .add(config, "grainStrength", 0, 0.2)
         .onChange((v) => (glassMaterial.uniforms.uGrainStrength.value = v));
+
+      gui
+        .add(config, "logoScale", 0, 2)
+        .onChange((v) => (gradientMaterial.uniforms.uLogoScale.value = v));
 
       // ======================================================
       // RESIZE
