@@ -413,6 +413,8 @@
                   uniform float uGlassOpacity;
                   uniform float uGrainStrength;
 
+                  uniform float uTime;
+
 
                   vec2 hash12(float p) {
                     vec3 p3 = fract(vec3(p) * vec3(.1031, .1136, .1377));
@@ -420,8 +422,24 @@
                     return fract((p3.xx + p3.yz) * p3.zy) * 2.0 - 1.0;
                   }
 
+                  float hash(vec3 p)
+                  {
+                      return fract(
+                          sin(dot(p, vec3(127.1,311.7,74.7)))
+                          * 43758.5453123
+                      );
+                  }
+
                   float screenNoise(vec2 uv) {
-                    return fract(sin(dot(uv.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+                    uv += vec2(
+                        sin(uTime * 53.17),
+                        cos(uTime * 41.83)
+                    ) * 100.0;
+
+                    return fract(
+                        sin(dot(uv, vec2(12.9898, 78.233)))
+                        * 43758.5453123
+                    );
                   }
 
                   void main() {
@@ -462,7 +480,10 @@
                     vec3 baseColor = mix(textureBlur.rgb, uGlassColor, uGlassOpacity);
 
                     // Add grain
-                    float noise = screenNoise(gl_FragCoord.xy);
+                    float noise = hash(vec3(
+                        gl_FragCoord.xy,
+                        uTime * 20.0
+                    ));
                     baseColor += (noise - 0.5) * uGrainStrength;
 
                     vec3 finalColor = baseColor;
@@ -486,6 +507,7 @@
           uGlassColor: { value: new THREE.Color(config.glassColor) },
           uGlassOpacity: { value: config.glassOpacity },
           uGrainStrength: { value: config.grainStrength },
+          uTime: { value: 0 },
         },
         transparent: false,
       });
@@ -890,6 +912,7 @@
         const autoX = Math.sin(time) * config.autoIntensityX;
         const autoY = (Math.sin(time * 2) / 2) * config.autoIntensityY;
 
+        glassMat.uniforms.uTime.value = time;
         blobMat.uniforms.uTime.value = time;
         updateCubes(effect, time);
 
