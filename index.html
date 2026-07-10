@@ -268,53 +268,66 @@
         logoMaskWidth = 256;
         logoMaskHeight = 256;
 
+        generateSDF();
         console.log("Logo mask ready");
       }
 
-      function sampleLogoMask(x, y) {
-        if (!logoMaskData) return 1;
+      let logoSDF = null;
+
+      function generateSDF() {
+        const size = 256;
+
+        logoSDF = new Float32Array(size * size);
+
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            const index = x + y * size;
+
+            const inside = logoMaskData[index] > 0.5;
+
+            let minDist = size;
+
+            for (let yy = 0; yy < size; yy++) {
+              for (let xx = 0; xx < size; xx++) {
+                const idx = xx + yy * size;
+
+                const other = logoMaskData[idx] > 0.5;
+
+                if (other !== inside) {
+                  const dx = x - xx;
+                  const dy = y - yy;
+
+                  const d = Math.sqrt(dx * dx + dy * dy);
+
+                  minDist = Math.min(minDist, d);
+                }
+              }
+            }
+
+            logoSDF[index] = inside ? minDist : -minDist;
+          }
+        }
+
+        console.log("SDF ready");
+      }
+
+      function sampleLogoSDF(x, y) {
+        if (!logoSDF) return -999;
 
         let u = x * 0.5 + 0.5;
         let v = y * 0.5 + 0.5;
 
         v = 1 - v;
 
-        const px = Math.floor(
-          THREE.MathUtils.clamp(u, 0, 1) * (logoMaskWidth - 1),
-        );
+        const px = Math.floor(THREE.MathUtils.clamp(u, 0, 1) * 255);
 
-        const py = Math.floor(
-          THREE.MathUtils.clamp(v, 0, 1) * (logoMaskHeight - 1),
-        );
+        const py = Math.floor(THREE.MathUtils.clamp(v, 0, 1) * 255);
 
-        return logoMaskData[px + py * logoMaskWidth];
+        return logoSDF[px + py * 256] / 128;
       }
 
       function smoothMask(v) {
         return v * v * (3.0 - 2.0 * v);
-      }
-
-      function applyLogoMask(object) {
-        if (!logoMaskData) return;
-
-        const size = object.size;
-        const field = object.field;
-
-        for (let z = 0; z < size; z++) {
-          for (let y = 0; y < size; y++) {
-            for (let x = 0; x < size; x++) {
-              const index = x + size * (y + size * z);
-
-              const nx = (x / (size - 1)) * 2 - 1;
-
-              const ny = (y / (size - 1)) * 2 - 1;
-
-              const mask = sampleLogoMask(nx, ny);
-
-              field[index] *= mask > 0.45 ? 1.0 : 0.0;
-            }
-          }
-        }
       }
 
       function rebuildMarchingCubes(resolution) {
@@ -443,7 +456,6 @@
         object.reset();
         const activeBlobCount = Math.min(config.blobCount, balls.length);
         const limit = config.movementRadius;
-        const logoLimit = 0.65;
 
         for (let i = 0; i < activeBlobCount; i++) {
           const b = balls[i];
@@ -452,14 +464,6 @@
           b.y += b.vy;
           b.z += b.vz;
 
-          if (Math.abs(b.x) > logoLimit) {
-            b.vx *= -1;
-            b.x = b.x > 0 ? logoLimit : -logoLimit;
-          }
-          if (Math.abs(b.y) > logoLimit) {
-            b.vy *= -1;
-            b.y = b.y > 0 ? logoLimit : -logoLimit;
-          }
           if (Math.abs(b.z) > limit) {
             b.vz *= -1;
             b.z = b.z > 0 ? limit : -limit;
@@ -469,15 +473,27 @@
           const y = (b.y + 1) * 0.5;
           const z = (b.z + 1) * 0.5;
 
+          const sdf = sampleLogoSDF(b.x, b.y);
+
+          if (sdf < 0) {
+            b.vx *= -1;
+            b.vy *= -1;
+
+            b.x *= -0.9;
+            b.y *= -0.9;
+
+            continue;
+          }
+
+          const depth = sdf * 0.5 + 0.5;
+
           const strength =
             b.strength *
             config.blobStrength *
             (0.9 + 0.15 * Math.sin(time * 0.6 + b.phase));
 
-          object.addBall(x, y, z, strength, config.blobSubtract);
+          object.addBall(x, y, z, strength * depth, config.blobSubtract);
         }
-
-        applyLogoMask(object);
 
         object.update();
       }
