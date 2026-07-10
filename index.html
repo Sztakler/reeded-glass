@@ -235,9 +235,95 @@
       const backgroundGroup = new THREE.Group();
       scene.add(backgroundGroup);
 
-      // Bottom image
-      const bottomTexture = textureLoader.load("images/blob.png");
-      bottomTexture.colorSpace = THREE.SRGBColorSpace;
+      // Logo mask
+      const logoMask = textureLoader.load("images/signet.svg", () => {
+        prepareLogoMask();
+      });
+
+      let logoMaskData = null;
+      let logoMaskWidth = 0;
+      let logoMaskHeight = 0;
+
+      function prepareLogoMask() {
+        const img = logoMask.image;
+
+        const canvas = document.createElement("canvas");
+        canvas.width = 256;
+        canvas.height = 256;
+
+        const ctx = canvas.getContext("2d");
+
+        ctx.clearRect(0, 0, 256, 256);
+
+        ctx.drawImage(img, 0, 0, 256, 256);
+
+        const pixels = ctx.getImageData(0, 0, 256, 256).data;
+
+        logoMaskData = new Float32Array(256 * 256);
+
+        for (let i = 0; i < logoMaskData.length; i++) {
+          logoMaskData[i] = pixels[i * 4 + 3] / 255;
+        }
+
+        logoMaskWidth = 256;
+        logoMaskHeight = 256;
+
+        console.log("Logo mask ready");
+      }
+
+      function sampleLogoMask(x, y) {
+        if (!logoMaskData) return 1;
+
+        let u = x * 0.5 + 0.5;
+        let v = y * 0.5 + 0.5;
+
+        v = 1 - v;
+
+        const px = Math.floor(
+          THREE.MathUtils.clamp(u, 0, 1) * (logoMaskWidth - 1),
+        );
+
+        const py = Math.floor(
+          THREE.MathUtils.clamp(v, 0, 1) * (logoMaskHeight - 1),
+        );
+
+        return logoMaskData[px + py * logoMaskWidth];
+      }
+
+      function applyLogoMask(object) {
+        if (!logoMaskData) return;
+
+        const size = object.size;
+        const field = object.field;
+
+        for (let z = 0; z < size; z++) {
+          for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+              const index = x + size * (y + size * z);
+
+              const nx = (x / (size - 1)) * 2 - 1;
+
+              const ny = (y / (size - 1)) * 2 - 1;
+
+              const mask = sampleLogoMask(nx, ny);
+
+              field[index] *= mask * mask;
+            }
+          }
+        }
+      }
+
+      function rebuildMarchingCubes(resolution) {
+        scene.remove(effect);
+
+        effect.geometry.dispose();
+
+        effect = new MarchingCubes(resolution, blobMat, true, true, 100000);
+
+        effect.scale.set(1.5, 1.5, 1.5);
+
+        scene.add(effect);
+      }
 
       // Default mask texture (white)
       const canvas = document.createElement("canvas");
@@ -267,6 +353,7 @@
         cameraDistance: 3.0,
         textColor: "#e2ff00",
         autoColor: false,
+        blobResolution: 20,
         blobCount: 20,
         blobStrength: 1.5,
         blobSubtract: 10,
@@ -331,8 +418,13 @@
         side: THREE.DoubleSide,
       });
 
-      const resolution = 30;
-      const effect = new MarchingCubes(resolution, blobMat, true, true, 100000);
+      let effect = new MarchingCubes(
+        config.blobResolution,
+        blobMat,
+        true,
+        true,
+        100000,
+      );
       effect.scale.set(1.5, 1.5, 1.5);
       scene.add(effect);
 
@@ -347,6 +439,7 @@
         object.reset();
         const activeBlobCount = Math.min(config.blobCount, balls.length);
         const limit = config.movementRadius;
+        const logoLimit = 0.65;
 
         for (let i = 0; i < activeBlobCount; i++) {
           const b = balls[i];
@@ -355,13 +448,13 @@
           b.y += b.vy;
           b.z += b.vz;
 
-          if (Math.abs(b.x) > limit) {
+          if (Math.abs(b.x) > logoLimit) {
             b.vx *= -1;
-            b.x = b.x > 0 ? limit : -limit;
+            b.x = b.x > 0 ? logoLimit : -logoLimit;
           }
-          if (Math.abs(b.y) > limit) {
+          if (Math.abs(b.y) > logoLimit) {
             b.vy *= -1;
-            b.y = b.y > 0 ? limit : -limit;
+            b.y = b.y > 0 ? logoLimit : -logoLimit;
           }
           if (Math.abs(b.z) > limit) {
             b.vz *= -1;
@@ -379,6 +472,9 @@
 
           object.addBall(x, y, z, strength, config.blobSubtract);
         }
+
+        applyLogoMask(object);
+
         object.update();
       }
 
@@ -396,15 +492,20 @@
                 `;
 
       const fragmentShader = `
+                  #define PI 3.1415926535897932384626433832795
+
                   varying vec2 vUv;
                   varying vec4 vScreenPosition;
+                  varying vec3 vWorldPosition;
 
                   uniform sampler2D uTransmissionMap;
+                  uniform sampler2D uMask;
 
                   uniform float uStripesCount;
 
                   uniform float uRefractionStrength;
                   uniform float uBlurStrength;
+                  uniform vec2 uResolution;
 
                   uniform float uShatterX;
                   uniform float uShatterY;
@@ -442,6 +543,23 @@
                     );
                   }
 
+                vec4 horizontalGaussianBlur(sampler2D tex, vec2 uv, float radius)
+                {
+                    vec2 texel = vec2(radius / uResolution.x, 0.0);
+
+                    vec4 color = vec4(0.0);
+
+                    color += texture2D(tex, uv) * 0.227027;
+
+                    color += texture2D(tex, uv + texel * 1.384615) * 0.316216;
+                    color += texture2D(tex, uv - texel * 1.384615) * 0.316216;
+
+                    color += texture2D(tex, uv + texel * 3.230769) * 0.070270;
+                    color += texture2D(tex, uv - texel * 3.230769) * 0.070270;
+
+                    return color;
+                }
+
                   void main() {
                     vec2 screenUV = (vScreenPosition.xy / vScreenPosition.w) * 0.5 + 0.5;
 
@@ -465,16 +583,13 @@
                     // Y Offset
                     distortedUV.y += shatterOffset.y * uShatterY * 0.1;
 
-                    // Take texture samples
-                    vec4 textureBlur = vec4(0.0);
-                    float blurStep = uBlurStrength * 0.001;
-
-                    textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(-blurStep, -blurStep));
-                    textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(blurStep, -blurStep));
-                    textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(-blurStep, blurStep));
-                    textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(blurStep, blurStep));
-                    textureBlur += texture2D(uTransmissionMap, distortedUV) * 2.0;
-                    textureBlur /= 6.0;
+                    // Blur
+                    float blurMask = sin(stripeX * PI);
+                    vec4 textureBlur = horizontalGaussianBlur(
+                        uTransmissionMap,
+                        distortedUV,
+                        uBlurStrength * blurMask
+                    );
 
                     // Base tinted color for the glass plane
                     vec3 baseColor = mix(textureBlur.rgb, uGlassColor, uGlassOpacity);
@@ -502,12 +617,18 @@
           uStripesCount: { value: config.stripesCount },
           uRefractionStrength: { value: config.refractionStrength },
           uBlurStrength: { value: config.blurStrength },
+          uResolution: {
+            value: new THREE.Vector2(window.innerWidth, window.innerHeight),
+          },
           uShatterX: { value: config.shatterX },
           uShatterY: { value: config.shatterY },
           uGlassColor: { value: new THREE.Color(config.glassColor) },
           uGlassOpacity: { value: config.glassOpacity },
           uGrainStrength: { value: config.grainStrength },
           uTime: { value: 0 },
+          uMask: {
+            value: logoMask,
+          },
         },
         transparent: false,
       });
@@ -581,6 +702,12 @@
         .name("Load Config");
 
       const folderBlobs = gui.addFolder("Metaballs Settings");
+      folderBlobs
+        .add(config, "blobResolution", 10, 80, 1)
+        .name("Resolution of blobs")
+        .onChange((resolution) => {
+          rebuildMarchingCubes(resolution);
+        });
       folderBlobs
         .add(config, "blobCount", 1, config.maxBlobs, 1)
         .name("Number of blobs");
