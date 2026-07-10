@@ -525,6 +525,10 @@
           return v;
       }
 
+      float getEdge(float mask) {
+        return fwidth(mask);
+      }
+
       void main() {
           vec2 warpNoise = texture2D(uNoiseMap, vUv).rg * 2.0 - 1.0;
           vec2 uv = vUv + warpNoise * uWarpStrength;
@@ -536,23 +540,25 @@
           vec2 p5 = vec2(0.5 + 0.4 * sin(uTime * 0.2), 0.5 + 0.3 * cos(uTime * 0.4));
           //vec2 p6 = vec2(0.5 + 0.25 * cos(uTime * 0.7), 0.5 + 0.35 * sin(uTime * 0.6));
 
+          vec2 centeredUv = (vUv - 0.5) / uLogoScale + 0.5;
+          float logoAlpha = 0.0;
+          if(centeredUv.x >= 0.0 && centeredUv.x <= 1.0 && centeredUv.y >= 0.0 && centeredUv.y <= 1.0) {
+              logoAlpha = texture2D(uLogo, centeredUv).a;
+          }
+
+          // Paralax
+          vec2 refraction = mix(warpNoise * uWarpStrength, -warpNoise * (uWarpStrength * 0.2), logoAlpha);
+          vec2 finalUv = vUv + refraction;
+
           float d = 0.0;
-          d += 0.05 / dot(uv - p1, uv - p1);
-          d += 0.05 / dot(uv - p2, uv - p2);
-          d += 0.05 / dot(uv - p3, uv - p3);
-          d += 0.05 / dot(uv - p4, uv - p4);
-          d += 0.05 / dot(uv - p5, uv - p5);
-          //d += 0.05 / dot(uv - p6, uv - p6);
+          d += 0.05 / dot(finalUv - p1, finalUv - p1);
+          d += 0.05 / dot(finalUv - p2, finalUv - p2);
+          d += 0.05 / dot(finalUv - p3, finalUv - p3);
+          d += 0.05 / dot(finalUv - p4, finalUv - p4);
+          d += 0.05 / dot(finalUv - p5, finalUv - p5);
+          //d += 0.05 / dot(finalUv - p6, finalUv - p6);
 
           float blobs = smoothstep(0.7, 0.9, d);
-
-          vec2 centeredUv = vUv - 0.5;
-          vec2 scaledUv = centeredUv / uLogoScale;
-          vec2 finalLogoUv = scaledUv + 0.5;
-          float logoAlpha = 0.0;
-          if(finalLogoUv.x >= 0.0 && finalLogoUv.x <= 1.0 && finalLogoUv.y >= 0.0 && finalLogoUv.y <= 1.0) {
-              logoAlpha = texture2D(uLogo, finalLogoUv).a;
-          }
 
           vec3 colorA = vec3(0.08, 0.06, 0.05);
           vec3 colorB = vec3(0.9098, 0.4863, 0.1333);
