@@ -508,23 +508,29 @@ float fbm(vec2 p) {
 }
 
 void main() {
-  vec2 warpNoise = texture2D(uNoiseMap, vUv).rg * 2.0 - 1.0;
+    vec2 warpNoise = texture2D(uNoiseMap, vUv).rg * 2.0 - 1.0;
     vec2 uv = vUv + warpNoise * uWarpStrength;
 
-    vec2 p1 = vec2(0.5 + 0.3 * sin(uTime * 0.5), 0.5 + 0.3 * cos(uTime * 0.3));
-    vec2 p2 = vec2(0.5 + 0.4 * cos(uTime * 0.4), 0.5 + 0.4 * sin(uTime * 0.2));
-    vec2 p3 = vec2(0.5 + 0.2 * sin(uTime * 0.6), 0.5 + 0.2 * cos(uTime * 0.5));
+    vec2 p1 = vec2(0.5 + 0.35 * sin(uTime * 0.4), 0.5 + 0.3 * cos(uTime * 0.3));
+    vec2 p2 = vec2(0.5 + 0.4 * cos(uTime * 0.5), 0.5 + 0.4 * sin(uTime * 0.2));
+    vec2 p3 = vec2(0.5 + 0.2 * sin(uTime * 0.6), 0.5 + 0.2 * cos(uTime * 0.7));
+    vec2 p4 = vec2(0.5 + 0.3 * cos(uTime * 0.3), 0.5 + 0.2 * sin(uTime * 0.5));
+    vec2 p5 = vec2(0.5 + 0.4 * sin(uTime * 0.2), 0.5 + 0.3 * cos(uTime * 0.4));
+    //vec2 p6 = vec2(0.5 + 0.25 * cos(uTime * 0.7), 0.5 + 0.35 * sin(uTime * 0.6));
 
-    float d1 = exp(-8.0 * length(uv - p1));
-    float d2 = exp(-8.0 * length(uv - p2));
-    float d3 = exp(-8.0 * length(uv - p3));
-    
-    float blobs = d1 + d2 + d3;
+    float d = 0.0;
+    d += 0.05 / dot(uv - p1, uv - p1);
+    d += 0.05 / dot(uv - p2, uv - p2);
+    d += 0.05 / dot(uv - p3, uv - p3);
+    d += 0.05 / dot(uv - p4, uv - p4);
+    d += 0.05 / dot(uv - p5, uv - p5);
+    //d += 0.05 / dot(uv - p6, uv - p6);
 
-    vec3 colorA = vec3(0.05, 0.2, 0.8); // Błękit
-    vec3 colorB = vec3(0.9, 0.2, 0.5);  // Róż
-    
-    vec3 color = mix(colorA, colorB, clamp(blobs, 0.0, 1.0));
+    float blobs = smoothstep(0.7, 0.9, d);
+
+    vec3 colorA = vec3(0.08, 0.06, 0.05); 
+    vec3 colorB = vec3(0.9098, 0.4863, 0.1333);
+    vec3 color = mix(colorA, colorB, blobs);
     
     gl_FragColor = vec4(color, 1.0);
 }
