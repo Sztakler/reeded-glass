@@ -175,22 +175,22 @@
       // ======================================================
 
       const config = {
-        stripesCount: 28,
+        stripesCount: 60,
 
-        reedStrength: 0.35,
+        reedStrength: 0.015,
         noiseStrength: 0.08,
         noiseScale: 3.5,
 
-        chromaticStrength: 0.003,
+        chromaticStrength: 0.002,
 
         blurStrength: 2.0,
 
         glassColor: "#ffffff",
         glassOpacity: 0.05,
 
-        grainStrength: 0.025,
-        logoScale: 1,
-        warpStrength: 0.2,
+        grainStrength: 0.04,
+        logoScale: 0.8,
+        warpStrength: 0.6,
       };
       // ======================================================
       // RENDERER
@@ -497,12 +497,12 @@
           uNoiseMap: {
             value: noiseTarget.texture,
           },
-          uWarpStrength: { value: 0.2 },
+          uWarpStrength: { value: config.warpStrength },
           uLogo: {
             value: logoTexture,
           },
           uLogoScale: {
-            value: 1.0,
+            value: config.logoScale,
           },
           uGradientMap: { value: gradientTexture },
         },
