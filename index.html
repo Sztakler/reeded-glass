@@ -154,6 +154,7 @@
 
         grainStrength: 0.04,
         warpStrength: 0.6,
+        gradientSpeed: 1.0,
       };
       // ======================================================
       // RENDERER
@@ -457,6 +458,9 @@
           uTime: {
             value: 0,
           },
+          uSpeed: {
+            value: 1.0,
+          },
           uNoiseMap: {
             value: noiseTarget.texture,
           },
@@ -486,6 +490,7 @@
       precision highp float;
       varying vec2 vUv;
       uniform float uTime;
+      uniform float uSpeed;
       uniform sampler2D uNoiseMap;
       uniform float uWarpStrength;
       uniform sampler2D uGradientMap;
@@ -518,27 +523,27 @@
           aspectUv.x = (aspectUv.x - 0.5) * uAspect + 0.5;
           vec2 warpNoise = texture2D(uNoiseMap, vUv).rg * 2.0 - 1.0;
           vec2 uv = aspectUv + warpNoise * uWarpStrength;
+          float t = uTime;
 
-          vec2 p1 = vec2(0.5 + 0.35 * sin(uTime * 0.4), 0.5 + 0.3 * cos(uTime * 0.3));
-          vec2 p2 = vec2(0.5 + 0.4 * cos(uTime * 0.5), 0.5 + 0.4 * sin(uTime * 0.2));
-          vec2 p3 = vec2(0.5 + 0.2 * sin(uTime * 0.6), 0.5 + 0.2 * cos(uTime * 0.7));
-          vec2 p4 = vec2(0.5 + 0.3 * cos(uTime * 0.3), 0.5 + 0.2 * sin(uTime * 0.5));
-          vec2 p5 = vec2(0.5 + 0.4 * sin(uTime * 0.2), 0.5 + 0.3 * cos(uTime * 0.4));
-          //vec2 p6 = vec2(0.5 + 0.25 * cos(uTime * 0.7), 0.5 + 0.35 * sin(uTime * 0.6));
+          vec2 p1 = vec2(0.5 + 0.35 * sin(t * 0.4), 0.5 + 0.3 * cos(t * 0.3));
+          vec2 p2 = vec2(0.5 + 0.4 * cos(t * 0.5), 0.5 + 0.4 * sin(t * 0.2));
+          vec2 p3 = vec2(0.5 + 0.2 * sin(t * 0.6), 0.5 + 0.2 * cos(t * 0.7));
+          vec2 p4 = vec2(0.5 + 0.3 * cos(t * 0.3), 0.5 + 0.2 * sin(t * 0.5));
+          vec2 p5 = vec2(0.5 + 0.4 * sin(t * 0.2), 0.5 + 0.3 * cos(t * 0.4));
 
 
           // Paralax
           vec2 refraction = mix(warpNoise * uWarpStrength, -warpNoise * (uWarpStrength * 0.2), 0.0);
           vec2 finalUv = aspectUv + refraction;
 
-          float d = 0.0;
-          d += 0.05 / dot(finalUv - p1, finalUv - p1);
-          d += 0.05 / dot(finalUv - p2, finalUv - p2);
-          d += 0.05 / dot(finalUv - p3, finalUv - p3);
-          d += 0.05 / dot(finalUv - p4, finalUv - p4);
-          d += 0.05 / dot(finalUv - p5, finalUv - p5);
-          //d += 0.05 / dot(finalUv - p6, finalUv - p6);
+          float R = 0.6;
+          float d1 = smoothstep(R, 0.0, length(finalUv - p1));
+          float d2 = smoothstep(R, 0.0, length(finalUv - p2));
+          float d3 = smoothstep(R, 0.0, length(finalUv - p3));
+          float d4 = smoothstep(R, 0.0, length(finalUv - p4));
+          float d5 = smoothstep(R, 0.0, length(finalUv - p5));
 
+          float d = max(d1, max(d2, max(d3, max(d4, d5))));
           float blobs = smoothstep(0.7, 0.9, d);
 
           vec3 colorBg = vec3(0.0, 0.02745, 0.1843); 
@@ -616,6 +621,10 @@
       gui
         .add(config, "warpStrength", 0, 2)
         .onChange((v) => (gradientMaterial.uniforms.uWarpStrength.value = v));
+
+      gui
+        .add(config, "gradientSpeed", 0, 2)
+        .onChange((v) => (gradientMaterial.uniforms.uSpeed.value = v));
 
       // ======================================================
       // RESIZE
