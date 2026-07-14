@@ -11,9 +11,7 @@ An interactive WebGL poster that mimics frosted reeded glass using shaders. I've
 ## Features
 
 * **Two-Pass Rendering:** To achieve this effect, the scene is rendered in two passes. The first pass renders the entire viewport into a texture, while the second projects it onto the glass with applied refraction and displacement.
-* **Smooth drift:** The camera continuously drifts along the lemniscate loop. This ambient movement is blended with mouse and touch for smooth response.
-* **Grain, tint, etc.:** I've dropped in some grain, blur and tint to achieve more cinematic look.
-* **Config Persistence:** You can save your custom setups as JSON files and load them back into the scene.
+* **Grain, tint, etc.:** I've dropped in some animated grain, golden ratio blur and glass tint to achieve more cinematic look.
 
 ## Quick Start
 
@@ -23,13 +21,6 @@ To run the development server locally:
 bun install
 bun run dev
 ```
-
-## How to use
-
-1. Upload your own `Bottom` (background) and `Top` (foreground) images.
-2. Use the GUI panel to tweak the refraction, blur, and shatter intensity.
-3. Once satisfied, hit `Save Config` to export your unique look as a `.json` file.
-4. Use `Load Config` to restore your previously saved compositions.
 
 ## Roadmap
 
