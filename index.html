@@ -349,7 +349,8 @@
                   }
 
                   void main() {
-                      float x = fract(vUv.x * uStripesCount) * 2.0 - 1.0;
+                      float t = fract(vUv.x * uStripesCount);
+                      float x = sin(t * 3.14159265 - 1.57079633);
                       float distSq = x * x;
                       vec2 normal = vec2(x, sqrt(max(0.001, 1.0 - distSq)));
 
