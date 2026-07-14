@@ -144,8 +144,6 @@
         stripesCount: 80,
 
         reedStrength: 0.015,
-        noiseStrength: 0.08,
-        noiseScale: 3.5,
 
         chromaticStrength: 0.002,
 
@@ -155,7 +153,6 @@
         glassOpacity: 0.05,
 
         grainStrength: 0.04,
-        logoScale: 0.8,
         warpStrength: 0.6,
       };
       // ======================================================
@@ -464,12 +461,6 @@
             value: noiseTarget.texture,
           },
           uWarpStrength: { value: config.warpStrength },
-          uLogo: {
-            value: logoTexture,
-          },
-          uLogoScale: {
-            value: config.logoScale,
-          },
           uGradientMap: { value: gradientTexture },
           uAspect: { value: innerWidth / innerHeight },
         },
@@ -497,8 +488,6 @@
       uniform float uTime;
       uniform sampler2D uNoiseMap;
       uniform float uWarpStrength;
-      uniform sampler2D uLogo;
-      uniform float uLogoScale;
       uniform sampler2D uGradientMap;
       uniform float uAspect;
 
@@ -537,14 +526,9 @@
           vec2 p5 = vec2(0.5 + 0.4 * sin(uTime * 0.2), 0.5 + 0.3 * cos(uTime * 0.4));
           //vec2 p6 = vec2(0.5 + 0.25 * cos(uTime * 0.7), 0.5 + 0.35 * sin(uTime * 0.6));
 
-          vec2 centeredUv = (aspectUv - 0.5) / uLogoScale + 0.5;
-          float logoAlpha = 0.0;
-          if(centeredUv.x >= 0.0 && centeredUv.x <= 1.0 && centeredUv.y >= 0.0 && centeredUv.y <= 1.0) {
-              logoAlpha = texture2D(uLogo, centeredUv).a;
-          }
 
           // Paralax
-          vec2 refraction = mix(warpNoise * uWarpStrength, -warpNoise * (uWarpStrength * 0.2), logoAlpha);
+          vec2 refraction = mix(warpNoise * uWarpStrength, -warpNoise * (uWarpStrength * 0.2), 0.0);
           vec2 finalUv = aspectUv + refraction;
 
           float d = 0.0;
@@ -564,7 +548,7 @@
           float mask = step(0.05, d);
           blobsColor = mix(colorBg, blobsColor, mask);
 
-          vec3 finalColor = mix(blobsColor, colorBg, logoAlpha);
+          vec3 finalColor = mix(blobsColor, colorBg, 0.0);
 
           gl_FragColor = vec4(finalColor, 1.0);
       }
@@ -628,10 +612,6 @@
       gui
         .add(config, "grainStrength", 0, 0.2)
         .onChange((v) => (glassMaterial.uniforms.uGrainStrength.value = v));
-
-      gui
-        .add(config, "logoScale", 0, 2)
-        .onChange((v) => (gradientMaterial.uniforms.uLogoScale.value = v));
 
       gui
         .add(config, "warpStrength", 0, 2)
