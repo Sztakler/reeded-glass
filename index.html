@@ -120,40 +120,6 @@
     </style>
   </head>
   <body>
-    <!-- Typography layer -->
-    <div class="poster-ui" style="display: none">
-      <h1 class="main-title">Reeded<br />Glass</h1>
-      <div class="subtitle">Displacement<br />System</div>
-    </div>
-
-    <!-- Files upload -->
-    <div class="upload-container">
-      <div class="upload-group">
-        <label class="custom-file-upload" style="display: none">
-          <input
-            type="file"
-            id="upload-bottom"
-            accept="image/*"
-            style="display: none"
-          />
-          Bottom image
-        </label>
-        <div id="bottom-preview" class="preview-box"></div>
-      </div>
-
-      <div class="upload-group">
-        <label class="custom-file-upload">
-          <input
-            type="file"
-            id="upload-top"
-            accept="image/*"
-            style="display: none"
-          />
-          Shader mask
-        </label>
-        <div id="top-preview" class="preview-box"></div>
-      </div>
-    </div>
     <!-- 3D Layer -->
     <div id="canvas-container"></div>
 
@@ -168,731 +134,587 @@
 
     <script type="module">
       import * as THREE from "three";
-      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
       import { GUI } from "three/addons/libs/lil-gui.module.min.js";
 
-      // --- SCENE SETUP ---
+      // ======================================================
+      // CONFIG
+      // ======================================================
+
+      const config = {
+        stripesCount: 80,
+
+        reedStrength: 0.05,
+
+        chromaticStrength: 0.01,
+
+        blurStrength: 40.0,
+
+        glassColor: "#ffffff",
+        glassOpacity: 0.0,
+
+        grainStrength: 0.12,
+        warpStrength: 0.12,
+        gradientSpeed: 0.12,
+        cloudDensity: 3.0,
+        cloudSize: 0.6,
+      };
+      // ======================================================
+      // RENDERER
+      // ======================================================
+
       const container = document.getElementById("canvas-container");
-      const scene = new THREE.Scene();
-      scene.background = new THREE.Color("#0a0a0a");
 
-      // Camera
-      const camera = new THREE.PerspectiveCamera(
-        45,
-        window.innerWidth / window.innerHeight,
-        0.1,
-        100,
-      );
-      camera.position.set(0, 0, 2);
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+      });
 
-      // Renderer
-      const renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      renderer.domElement.id = "canvas";
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+
+      renderer.setSize(innerWidth, innerHeight);
+
       container.appendChild(renderer.domElement);
 
-      // Mouse tracking
-      const mouse = { x: 0, y: 0 };
-      const targetCamera = { x: 0, y: 0 };
+      // ======================================================
+      // CAMERAS
+      // ======================================================
 
-      window.addEventListener("mousemove", (event) => {
-        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-        mouse.y = (event.clientY / window.innerHeight) * 2 - 1;
+      const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 10);
+
+      camera.position.z = 1;
+
+      // ======================================================
+      // SOURCE SCENE
+      // ======================================================
+
+      const scene = new THREE.Scene();
+
+      scene.background = new THREE.Color("#0a0a0a");
+
+      const noiseTarget = new THREE.WebGLRenderTarget(256, 256, {
+        format: THREE.RGBAFormat,
+        type: THREE.FloatType,
       });
 
-      window.addEventListener("touchmove", (event) => {
-        if (event.touches.length > 0) {
-          mouse.x = (event.touches[0].clientX / window.innerWidth) * 2 - 1;
-          mouse.y = (event.touches[0].clientY / window.innerHeight) * 2 - 1;
-        }
-      });
+      const noiseFragmentShader = `
+          uniform float uTime;
+          varying vec2 vUv;
 
-      // Lighting
-      const ambientLight = new THREE.AmbientLight("#ffffff", 0.6);
-      scene.add(ambientLight);
+          //
+          // Description : Array and textureless GLSL 2D simplex noise function.
+          //      Author : Ian McEwan, Ashima Arts.
+          //  Maintainer : stegu
+          //     Lastmod : 20110822 (ijm)
+          //     License : Copyright (C) 2011 Ashima Arts. All rights reserved.
+          //               Distributed under the MIT License. See LICENSE file.
+          //               https://github.com/ashima/webgl-noise
+          //               https://github.com/stegu/webgl-noise
+          //
 
-      const dirLight = new THREE.DirectionalLight("#ffffff", 1.5);
-      dirLight.position.set(5, 5, 5);
-      scene.add(dirLight);
+          vec3 mod289(vec3 x) {
+            return x - floor(x * (1.0 / 289.0)) * 289.0;
+          }
 
-      // --- RENDER TARGET SETUP  ---
+          vec2 mod289(vec2 x) {
+            return x - floor(x * (1.0 / 289.0)) * 289.0;
+          }
+
+          vec3 permute(vec3 x) {
+            return mod289(((x*34.0)+10.0)*x);
+          }
+
+          float snoise(vec2 v)
+            {
+            const vec4 C = vec4(0.211324865405187,  // (3.0-sqrt(3.0))/6.0
+                                0.366025403784439,  // 0.5*(sqrt(3.0)-1.0)
+                               -0.577350269189626,  // -1.0 + 2.0 * C.x
+                                0.024390243902439); // 1.0 / 41.0
+          // First corner
+            vec2 i  = floor(v + dot(v, C.yy) );
+            vec2 x0 = v -   i + dot(i, C.xx);
+
+          // Other corners
+            vec2 i1;
+            //i1.x = step( x0.y, x0.x ); // x0.x > x0.y ? 1.0 : 0.0
+            //i1.y = 1.0 - i1.x;
+            i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+            // x0 = x0 - 0.0 + 0.0 * C.xx ;
+            // x1 = x0 - i1 + 1.0 * C.xx ;
+            // x2 = x0 - 1.0 + 2.0 * C.xx ;
+            vec4 x12 = x0.xyxy + C.xxzz;
+            x12.xy -= i1;
+
+          // Permutations
+            i = mod289(i); // Avoid truncation effects in permutation
+            vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 ))
+          		+ i.x + vec3(0.0, i1.x, 1.0 ));
+
+            vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+            m = m*m ;
+            m = m*m ;
+
+          // Gradients: 41 points uniformly over a line, mapped onto a diamond.
+          // The ring size 17*17 = 289 is close to a multiple of 41 (41*7 = 287)
+
+            vec3 x = 2.0 * fract(p * C.www) - 1.0;
+            vec3 h = abs(x) - 0.5;
+            vec3 ox = floor(x + 0.5);
+            vec3 a0 = x - ox;
+
+          // Normalise gradients implicitly by scaling m
+          // Approximation of: m *= inversesqrt( a0*a0 + h*h );
+            m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+
+          // Compute final noise value at P
+            vec3 g;
+            g.x  = a0.x  * x0.x  + h.x  * x0.y;
+            g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+            return 130.0 * dot(m, g);
+          }
+
+          void main() {
+              float nx = snoise(vUv * 3.0 + uTime * 0.2);
+              float ny = snoise(vUv * 3.0 + uTime * 0.3);
+              gl_FragColor = vec4(nx * 0.5 + 0.5, ny * 0.5 + 0.5, 0.0, 1.0);
+          }
+      `;
+
+      const textureLoader = new THREE.TextureLoader();
+
+      const logoTexture = textureLoader.load("./images/logo.png");
+
+      logoTexture.minFilter = THREE.LinearFilter;
+      logoTexture.magFilter = THREE.LinearFilter;
+      logoTexture.wrapS = THREE.ClampToEdgeWrapping;
+      logoTexture.wrapT = THREE.ClampToEdgeWrapping;
+
+      // ======================================================
+      // RENDER TARGET
+      // ======================================================
+
       const renderTarget = new THREE.WebGLRenderTarget(
-        window.innerWidth * window.devicePixelRatio,
-        window.innerHeight * window.devicePixelRatio,
+        innerWidth,
+        innerHeight,
         {
           minFilter: THREE.LinearFilter,
           magFilter: THREE.LinearFilter,
           format: THREE.RGBAFormat,
+          depthBuffer: false,
         },
       );
 
-      // --- BACKGROUND OBJECTS ---
-      const textureLoader = new THREE.TextureLoader();
+      // ======================================================
+      // FULLSCREEN QUAD
+      // ======================================================
 
-      // Group with all background elements
-      const backgroundGroup = new THREE.Group();
-      scene.add(backgroundGroup);
+      const quadScene = new THREE.Scene();
 
-      // Bottom image
-      const bottomTexture = textureLoader.load("images/blob.png");
-      bottomTexture.colorSpace = THREE.SRGBColorSpace;
+      const quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
-      // Default mask texture (white)
-      const canvas = document.createElement("canvas");
-      canvas.width = 2;
-      canvas.height = 2;
-      const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "white";
-      ctx.fillRect(0, 0, 2, 2);
-      const defaultMask = new THREE.CanvasTexture(canvas);
+      // ======================================================
+      // GLASS SHADER
+      // ======================================================
 
-      // Color metaballs shader
-      const blobVertexShader = `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `;
-
-      const blobFragmentShader = `
-uniform float uTime;
-    uniform vec3 uColor1;
-    uniform vec3 uColor2;
-    uniform vec3 uColor3;
-    uniform float uSpeed;
-    uniform float uBlobSize;
-    varying vec2 vUv;
-    uniform sampler2D uMask;
-    uniform vec2 uMaskOffset;
-    uniform vec2 uMaskScale;
-
-    void main() {
-      float t = uTime * uSpeed;
-      vec2 pos1 = vec2(0.5 + sin(t) * 0.2, 0.5 + cos(t * 0.8) * 0.2);
-      vec2 pos2 = vec2(0.5 + cos(t * 1.1) * 0.25, 0.5 + sin(t * 0.5) * 0.25);
-      vec2 pos3 = vec2(0.5 + sin(t * 0.7) * 0.3, 0.5 + cos(t * 1.3) * 0.3);
-
-      float d1 = uBlobSize / length(vUv - pos1);
-      float d2 = (uBlobSize + 0.05) / length(vUv - pos2);
-      float d3 = uBlobSize / length(vUv - pos3);
-
-      vec3 finalColor = smoothstep(0.0, 1.0, d1) * uColor1 +
-                        smoothstep(0.0, 1.0, d2) * uColor2 +
-                        smoothstep(0.0, 1.0, d3) * uColor3;
-
-      vec2 maskedUv = (vUv - 0.5) / uMaskScale + 0.5 - uMaskOffset;
-      vec4 maskTex = texture2D(uMask, maskedUv);
-
-      // Don't loop mask
-      if(maskedUv.x < 0.0 || maskedUv.x > 1.0 || maskedUv.y < 0.0 || maskedUv.y > 1.0) {
-    maskTex = vec4(0.0);
-}
-
-      gl_FragColor = vec4(finalColor * maskTex.a, maskTex.a);
-    }      `;
-
-      const bottomGeo = new THREE.PlaneGeometry(6, 4.8);
-      const bottomMat = new THREE.ShaderMaterial({
-        uniforms: {
-          uTime: { value: 0 },
-          uColor1: { value: new THREE.Color("#7494c8") },
-          uColor2: { value: new THREE.Color("#7e355f") },
-          uColor3: { value: new THREE.Color("#4e974e") },
-          uSpeed: { value: 0.3 },
-          uBlobSize: { value: 0.2 },
-          uMask: { value: defaultMask },
-          uMaskOffset: { value: new THREE.Vector2(0, 0) },
-          uMaskScale: { value: new THREE.Vector2(1, 1) },
-        },
-        vertexShader: blobVertexShader,
-        fragmentShader: blobFragmentShader,
-        transparent: true,
-      });
-      const bottomMesh = new THREE.Mesh(bottomGeo, bottomMat);
-      bottomMesh.position.set(0, 0, -0.6); // Placed furthest back
-      backgroundGroup.add(bottomMesh);
-
-      // Top Image
-      const topTexture = textureLoader.load("images/signet.svg");
-      topTexture.colorSpace = THREE.SRGBColorSpace;
-
-      const topGeo = new THREE.PlaneGeometry(2.5, 2.5);
-      const topMat = new THREE.MeshBasicMaterial({
-        map: topTexture,
-        transparent: true,
-      });
-      // const topMesh = new THREE.Mesh(topGeo, topMat);
-      // topMesh.position.set(0, 0, -0.55);
-
-      // --- CONFIGURATION OBJECT ---
-      const config = {
-        stripesCount: 24.0,
-        refractionStrength: 0.35,
-        blurStrength: 2.0,
-        shatterX: 0.2,
-        shatterY: 0.35,
-        glassColor: "#ffffff",
-        glassOpacity: 0.0,
-        grainStrength: 0.05,
-        mouseIntensityX: 0.4,
-        mouseIntensityY: 0.3,
-        mouseEase: 0.05,
-        autoSpeed: 0.001,
-        autoIntensityX: 0.15,
-        autoIntensityY: 0.1,
-        cameraDistance: 3.0,
-        textColor: "#e2ff00",
-        autoColor: false,
-        blobSpeed: 0.3,
-        blobSize: 0.2,
-        color1: "#7494c8",
-        color2: "#7e355f",
-        color3: "#4e974e",
-        maskOffsetX: 0,
-        maskOffsetY: 0,
-        maskScaleX: 1,
-        maskScaleY: 1,
-      };
-
-      // --- CUSTOM REED GLASS SHADER ---
       const vertexShader = `
-            varying vec2 vUv;
-            varying vec4 vScreenPosition;
-
-            void main() {
-              vUv = uv;
-              vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-              gl_Position = projectionMatrix * mvPosition;
-              vScreenPosition = gl_Position;
-            }
-          `;
+                  varying vec2 vUv;
+                  void main() {
+                      vUv = uv;
+                      gl_Position = vec4(position, 1.0);
+                  }
+              `;
 
       const fragmentShader = `
-            varying vec2 vUv;
-            varying vec4 vScreenPosition;
+                  precision highp float;
+                  varying vec2 vUv;
+                  uniform sampler2D uScene;
+                  uniform vec2 uResolution;
+                  uniform float uTime;
+                  uniform float uStripesCount;
+                  uniform float uReedStrength;
+                  uniform float uChromaticStrength;
+                  uniform float uBlurStrength;
+                  uniform vec3 uGlassColor;
+                  uniform float uGlassOpacity;
+                  uniform float uGrainStrength;
 
-            uniform sampler2D uTransmissionMap;
+                  float hash(vec2 p) {
+                      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+                  }
 
-            uniform float uStripesCount;
+                  vec3 blur(sampler2D tex, vec2 uv, float amount) {
+                      vec2 px = vec2(amount / uResolution.x, 0.0);
+                      vec3 col = texture2D(tex, uv).rgb * 0.4;
+                      col += (texture2D(tex, uv + px).rgb + texture2D(tex, uv - px).rgb) * 0.15;
+                      col += (texture2D(tex, uv + px * 2.0).rgb + texture2D(tex, uv - px * 2.0).rgb) * 0.15;
+                      return col;
+                  }
 
-            uniform float uRefractionStrength;
-            uniform float uBlurStrength;
+                  // Golden Angle Distribution blur
+                  vec3 getBlurredColor(sampler2D tex, vec2 uv, vec2 distortion, float blurAmount, float chromaAmount) {
+                      vec3 accumulatedColor = vec3(0.0);
+                      float totalWeight = 0.0;
+    
+                      float goldenAngle = 2.39996323; 
+    
+                      for (float i = 0.0; i < 16.0; i++) {
+                          float r = sqrt(i + 0.5) / sqrt(16.0); // Rozkład promienia
+                          float theta = i * goldenAngle;
+        
+                          vec2 blurOffset = vec2(cos(theta), sin(theta)) * r * blurAmount;
+        
+                          vec2 sampleUv = uv + (blurOffset / uResolution);
+        
+                          vec2 chromaOffset = distortion * chromaAmount * (r * 0.5 + 0.5);
+        
+                          float redSample   = texture2D(tex, sampleUv + chromaOffset).r;
+                          float greenSample = texture2D(tex, sampleUv).g;
+                          float blueSample  = texture2D(tex, sampleUv - chromaOffset).b;
+        
+                          accumulatedColor += vec3(redSample, greenSample, blueSample);
+                          totalWeight += 1.0;
+                      }
+    
+                      return accumulatedColor / totalWeight;
+                  }
 
-            uniform float uShatterX;
-            uniform float uShatterY;
+                  void main() {
+                      float t = fract(vUv.x * uStripesCount);
+                      float x = sin(t * 3.14159265 - 1.57079633);
+                      float distSq = x * x;
+                      vec2 normal = vec2(x, sqrt(max(0.001, 1.0 - distSq)));
 
-            uniform vec3 uGlassColor;
-            uniform float uGlassOpacity;
-            uniform float uGrainStrength;
+                      vec2 distortion = normal * uReedStrength * 0.5;
+                      vec2 uv = vUv + distortion;
 
+                      vec3 color = getBlurredColor(uScene, uv, normal, uBlurStrength, uChromaticStrength);
+                      color = mix(color, uGlassColor, uGlassOpacity);
+                      color += (hash(gl_FragCoord.xy + uTime) - 0.5) * uGrainStrength;
 
-            vec2 hash12(float p) {
-              vec3 p3 = fract(vec3(p) * vec3(.1031, .1136, .1377));
-              p3 += dot(p3, p3.yzx + 19.19);
-              return fract((p3.xx + p3.yz) * p3.zy) * 2.0 - 1.0;
-            }
+                      // Highlights and Shadows
+                      vec3 reflection = texture2D(uScene, uv + (normal * 0.1)).rgb;
+                      float edgeHighlight = pow(abs(normal.x), 2.0);
+                      color = mix(color, reflection * 1.5, edgeHighlight * 0.3);
 
-            float screenNoise(vec2 uv) {
-              return fract(sin(dot(uv.xy, vec2(12.9898, 78.233))) * 43758.5453123);
-            }
+                      gl_FragColor = vec4(color, 1.0);
+                  }
+              `;
 
-            void main() {
-              vec2 screenUV = (vScreenPosition.xy / vScreenPosition.w) * 0.5 + 0.5;
+      // ======================================================
+      // MATERIAL
+      // ======================================================
 
-              // Assign ID to each stripe
-              float stripeIndex = floor(vUv.x * uStripesCount);
-              // Divide into stripes
-              float stripeX = fract(vUv.x * uStripesCount);
+      const glassMaterial = new THREE.ShaderMaterial({
+        vertexShader,
 
-              // Generate offset for each stripe
-              vec2 shatterOffset = hash12(stripeIndex);
+        fragmentShader,
 
-              // Add refraction
-              float refractionOffset = sin((stripeX - 0.5) * 3.14159265);
-
-              vec2 distortedUV = screenUV;
-
-              // X offset
-              distortedUV.x += shatterOffset.x * uShatterX * 0.1;
-              distortedUV.x += refractionOffset * uRefractionStrength * 0.1;
-
-              // Y Offset
-              distortedUV.y += shatterOffset.y * uShatterY * 0.1;
-
-              // Take texture samples
-              vec4 textureBlur = vec4(0.0);
-              float blurStep = uBlurStrength * 0.001;
-
-              textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(-blurStep, -blurStep));
-              textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(blurStep, -blurStep));
-              textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(-blurStep, blurStep));
-              textureBlur += texture2D(uTransmissionMap, distortedUV + vec2(blurStep, blurStep));
-              textureBlur += texture2D(uTransmissionMap, distortedUV) * 2.0;
-              textureBlur /= 6.0;
-
-              // Base tinted color for the glass plane
-              vec3 baseColor = mix(textureBlur.rgb, uGlassColor, uGlassOpacity);
-
-              // Add grain
-              float noise = screenNoise(gl_FragCoord.xy);
-              baseColor += (noise - 0.5) * uGrainStrength;
-
-              vec3 finalColor = baseColor;
-
-              gl_FragColor = vec4(finalColor, 1.0);
-            }
-          `;
-
-      // Cover entire viewport
-      const glassGeo = new THREE.PlaneGeometry(5, 5);
-      const glassMat = new THREE.ShaderMaterial({
-        vertexShader: vertexShader,
-        fragmentShader: fragmentShader,
         uniforms: {
-          uTransmissionMap: { value: null },
-          uStripesCount: { value: config.stripesCount },
-          uRefractionStrength: { value: config.refractionStrength },
-          uBlurStrength: { value: config.blurStrength },
-          uShatterX: { value: config.shatterX },
-          uShatterY: { value: config.shatterY },
-          uGlassColor: { value: new THREE.Color(config.glassColor) },
-          uGlassOpacity: { value: config.glassOpacity },
-          uGrainStrength: { value: config.grainStrength },
+          uScene: {
+            value: null,
+          },
+
+          uResolution: {
+            value: new THREE.Vector2(innerWidth, innerHeight),
+          },
+
+          uTime: {
+            value: 0,
+          },
+
+          uStripesCount: {
+            value: config.stripesCount,
+          },
+
+          uReedStrength: {
+            value: config.reedStrength,
+          },
+
+          uChromaticStrength: {
+            value: config.chromaticStrength,
+          },
+          uBlurStrength: {
+            value: config.blurStrength,
+          },
+
+          uGlassColor: {
+            value: new THREE.Color(config.glassColor),
+          },
+
+          uGlassOpacity: {
+            value: config.glassOpacity,
+          },
+
+          uGrainStrength: {
+            value: config.grainStrength,
+          },
         },
-        transparent: false,
       });
 
-      const glassMesh = new THREE.Mesh(glassGeo, glassMat);
-      glassMesh.position.set(0, 0, 0.5);
-      scene.add(glassMesh);
+      const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), glassMaterial);
 
-      // --- GUI CONFIGURATION ---
-      const gui = new GUI({ title: "Settings" });
+      quadScene.add(quad);
 
-      const folderCamera = gui.addFolder("Camera Settings");
-      folderCamera.add(config, "mouseIntensityX", 0, 2).name("Range X");
-      folderCamera.add(config, "mouseIntensityY", 0, 2).name("Range Y");
-      folderCamera.add(config, "mouseEase", 0.01, 0.2).name("Smoothness");
-      folderCamera.add(config, "autoSpeed", 0, 0.005).name("Auto Speed");
-      folderCamera.add(config, "autoIntensityX", 0, 0.5).name("Auto Range X");
-      folderCamera.add(config, "autoIntensityY", 0, 0.5).name("Auto Range Y");
-      folderCamera.add(config, "cameraDistance", 0, 10).name("Camera distance");
-
-      const folderGlass = gui.addFolder("Glass Parameters");
-
-      folderGlass
-        .add(config, "stripesCount", 1, 100, 1)
-        .name("Number of stripes")
-        .onChange((v) => (glassMat.uniforms.uStripesCount.value = v));
-      folderGlass
-        .add(config, "refractionStrength", 0.0, 1.0)
-        .name("Refraction strength")
-        .onChange((v) => (glassMat.uniforms.uRefractionStrength.value = v));
-      folderGlass
-        .add(config, "blurStrength", 0.0, 10.0)
-        .name("Frosted blur")
-        .onChange((v) => (glassMat.uniforms.uBlurStrength.value = v));
-      folderGlass
-        .add(config, "shatterX", 0.0, 1.0)
-        .name("Shatter displacement X")
-        .onChange((v) => (glassMat.uniforms.uShatterX.value = v));
-      folderGlass
-        .add(config, "shatterY", 0.0, 1.0)
-        .name("Shatter displacement Y")
-        .onChange((v) => (glassMat.uniforms.uShatterY.value = v));
-      folderGlass
-        .addColor(config, "glassColor")
-        .name("Glass tint color")
-        .onChange((v) => glassMat.uniforms.uGlassColor.value.set(v));
-
-      folderGlass
-        .add(config, "glassOpacity", 0.0, 1.0)
-        .name("Glass tint opacity")
-        .onChange((v) => (glassMat.uniforms.uGlassOpacity.value = v));
-
-      folderGlass
-        .add(config, "grainStrength", 0.0, 0.2)
-        .name("Grain roughness")
-        .onChange((v) => (glassMat.uniforms.uGrainStrength.value = v));
-
-      let colorController;
-
-      // const folderText = gui.addFolder("Text Parameters");
-      // colorController = folderText
-      // .addColor(config, "textColor")
-      // .name("Text Color")
-      // .onChange((v) => {
-      // document.querySelector("body").style.color = v;
-      // });
-      // folderText.add(config, "autoColor").name("Text color from image");
-
-      const folderSave = gui.addFolder("Export/Import");
-      folderSave.add({ save: saveConfig }, "save").name("Save Config (.json)");
-
-      const fileInput = document.createElement("input");
-      fileInput.type = "file";
-      fileInput.accept = ".json";
-      fileInput.style.display = "none";
-      fileInput.onchange = loadConfig;
-
-      folderSave
-        .add({ load: () => fileInput.click() }, "load")
-        .name("Load Config");
-
-      const folderBlobs = gui.addFolder("Background Blobs");
-
-      folderBlobs.add(config, "blobSpeed", 0, 1).onChange((v) => {
-        bottomMat.uniforms.uSpeed.value = v;
-      });
-
-      folderBlobs.add(config, "blobSize", 0.05, 0.5).onChange((v) => {
-        bottomMat.uniforms.uBlobSize.value = v;
-      });
-
-      folderBlobs.addColor(config, "color1").onChange((v) => {
-        bottomMat.uniforms.uColor1.value.set(v);
-      });
-      folderBlobs.addColor(config, "color2").onChange((v) => {
-        bottomMat.uniforms.uColor2.value.set(v);
-      });
-      folderBlobs.addColor(config, "color3").onChange((v) => {
-        bottomMat.uniforms.uColor3.value.set(v);
-      });
-
-      const folderMask = gui.addFolder("Mask Settings");
-      folderMask
-        .add(config, "maskOffsetX", -1, 1)
-        .name("Mask Offset X")
-        .onChange((v) => (bottomMat.uniforms.uMaskOffset.value.x = v));
-      folderMask
-        .add(config, "maskOffsetY", -1, 1)
-        .name("Mask Offset Y")
-        .onChange((v) => (bottomMat.uniforms.uMaskOffset.value.y = v));
-      folderMask
-        .add(config, "maskScaleX", 0.1, 5)
-        .name("Mask Scale X")
-        .onChange((v) => (bottomMat.uniforms.uMaskScale.value.x = v));
-      folderMask
-        .add(config, "maskScaleY", 0.1, 5)
-        .name("Mask Scale Y")
-        .onChange((v) => (bottomMat.uniforms.uMaskScale.value.y = v));
-
-      // Resize handler
-      window.addEventListener("resize", () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderTarget.setSize(
-          window.innerWidth * window.devicePixelRatio,
-          window.innerHeight * window.devicePixelRatio,
-        );
-      });
-
-      function handleFileUpload(event, targetMaterial, previewId) {
-        const file = event.target.files[0];
-        const previewContainer = document.getElementById(previewId);
-
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = function (e) {
-          const image = new Image();
-          image.onload = function () {
-            if (config.autoColor) {
-              const hslValues = getDominantColor(image);
-              const hexString = hslToHex(hslValues.h, hslValues.s, hslValues.l);
-
-              document.querySelector("body").style.color = hexString;
-
-              config.textColor = hexString;
-
-              if (colorController) colorController.updateDisplay();
-            }
-
-            const newTexture = new THREE.Texture(image);
-            newTexture.colorSpace = THREE.SRGBColorSpace;
-            newTexture.needsUpdate = true;
-
-            if (previewId === "top-preview") {
-              bottomMat.uniforms.uMask.value = newTexture;
-            } else {
-              if (targetMaterial.map) targetMaterial.map.dispose();
-              targetMaterial.map = newTexture;
-            }
-
-            // Render thumbnail
-            previewContainer.innerHTML = `
-            <img src="${e.target.result}" />
-            <div class="remove-btn">x</div>
-          `;
-
-            // Clear texture and preview thumbnail
-            previewContainer.querySelector(".remove-btn").onclick = () => {
-              bottomMat.uniforms.uMask.value = defaultMask;
-              previewContainer.innerHTML = "";
-            };
-          };
-          image.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
-      }
-
-      // Handle file events
-      document
-        .getElementById("upload-bottom")
-        .addEventListener("change", (e) =>
-          handleFileUpload(e, bottomMat, "bottom-preview"),
-        );
-      document
-        .getElementById("upload-top")
-        .addEventListener("change", (e) =>
-          handleFileUpload(e, topMat, "top-preview"),
-        );
-
-      function getDominantColor(imgElement) {
+      function createGradientTexture() {
         const canvas = document.createElement("canvas");
-        const context = canvas.getContext("2d");
-        canvas.width = 50;
-        canvas.height = 50;
-        context.drawImage(imgElement, 0, 0, 50, 50);
+        canvas.width = 512;
+        canvas.height = 1;
+        const ctx = canvas.getContext("2d");
 
-        const data = context.getImageData(0, 0, 50, 50).data;
-        let r = 0,
-          g = 0,
-          b = 0;
+        const grad = ctx.createLinearGradient(0, 0, 512, 0);
 
-        for (let i = 0; i < data.length; i += 4) {
-          r += data[i];
-          g += data[i + 1];
-          b += data[i + 2];
+        grad.addColorStop(0.0, "rgb(10, 10, 12)");
+        grad.addColorStop(0.9, "rgb(245, 235, 220)");
+        grad.addColorStop(0.5, "rgb(31, 62, 214)");
+
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 512, 1);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.minFilter = THREE.LinearFilter;
+        return texture;
+      }
+
+      const gradientTexture = createGradientTexture();
+
+      const gradientMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+          uTime: {
+            value: 0,
+          },
+          uNoiseMap: {
+            value: noiseTarget.texture,
+          },
+          uCloudDensity: {
+            value: config.cloudDensity,
+          },
+          uCloudSize: {
+            value: config.cloudSize,
+          },
+          uWarpStrength: { value: config.warpStrength },
+          uGradientMap: { value: gradientTexture },
+          uAspect: { value: innerWidth / innerHeight },
+        },
+
+        vertexShader: `
+
+        varying vec2 vUv;
+
+        void main(){
+
+          vUv=uv;
+
+          gl_Position=
+            projectionMatrix*
+            modelViewMatrix*
+            vec4(position,1.0);
+
         }
 
-        const count = data.length / 4;
-        const hslColor = calculateHightContrastHSL(
-          Math.floor(r / count),
-          Math.floor(g / count),
-          Math.floor(b / count),
-        );
+        `,
 
-        return hslColor;
+        fragmentShader: `
+      precision highp float;
+      varying vec2 vUv;
+      uniform float uTime;
+      uniform float uCloudDensity;
+      uniform sampler2D uNoiseMap;
+      uniform float uWarpStrength;
+      uniform sampler2D uGradientMap;
+      uniform float uAspect;
+      uniform float uCloudSize;
+
+      float hash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
       }
 
-      function hslToHex(h, s, l) {
-        l /= 100;
-        const a = (s * Math.min(l, 1 - l)) / 100;
-        const f = (n) => {
-          const k = (n + h / 30) % 12;
-          const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
-          return Math.round(255 * color)
-            .toString(16)
-            .padStart(2, "0");
-        };
-        return `#${f(0)}${f(8)}${f(4)}`;
+      float noise(vec2 p) {
+          vec2 i = floor(p); vec2 f = fract(p);
+          f = f*f*(3.0-2.0*f);
+          float a = hash(i); float b = hash(i+vec2(1.0,0.0));
+          float c = hash(i+vec2(0.0,1.0)); float d = hash(i+vec2(1.0,1.0));
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
       }
 
-      function calculateHightContrastHSL(r, g, b) {
-        r /= 255;
-        g /= 255;
-        b /= 255;
-        const max = Math.max(r, g, b),
-          min = Math.min(r, g, b);
-        let h,
-          s,
-          l = (max + min) / 2;
-
-        if (max === min) {
-          h = s = 0;
-        } else {
-          const d = max - min;
-          s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-          switch (max) {
-            case r:
-              h = (g - b) / d + (g < b ? 6 : 0);
-              break;
-            case g:
-              h = (b - r) / d + 2;
-              break;
-            case b:
-              h = (r - g) / d + 4;
-              break;
-          }
-          h /= 6;
-        }
-
-        return {
-          h: Math.floor(h * 360),
-          s: 100,
-          l: 60,
-        };
+      float fbm(vec2 p) {
+          float v = 0.0; float a = 0.5;
+          for(int i=0; i<5; i++) { v += noise(p)*a; p *= 2.0; a *= 0.5; }
+          return v;
       }
 
-      function saveConfig() {
-        config.maskOffsetX = bottomMat.uniforms.uMaskOffset.value.x;
-        config.maskOffsetY = bottomMat.uniforms.uMaskOffset.value.y;
-        config.maskScaleX = bottomMat.uniforms.uMaskScale.value.x;
-        config.maskScaleY = bottomMat.uniforms.uMaskScale.value.y;
-
-        const exportData = {
-          ...config,
-          bottomImage:
-            document.querySelector("#bottom-preview img")?.src || null,
-          topImage: document.querySelector("#top-preview img")?.src || null,
-        };
-
-        const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-          type: "application/json",
-        });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "config.json";
-        a.click();
+      float getEdge(float mask) {
+        return fwidth(mask);
       }
 
-      function loadConfig(event) {
-        const file = event.target.files[0];
-        if (!file) return;
+      void main() {
+          vec2 aspectUv = vUv;
+          aspectUv.x = (aspectUv.x - 0.5) * uAspect + 0.5;
+          vec2 warpNoise = texture2D(uNoiseMap, vUv).rg * 2.0 - 1.0;
+          vec2 uv = aspectUv + warpNoise * uWarpStrength;
+          float t = uTime;
 
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const data = JSON.parse(e.target.result);
+          vec2 p1 = vec2(0.5 + 0.35 * sin(t * 0.4), 0.5 + 0.3 * cos(t * 0.3));
+          vec2 p2 = vec2(0.5 + 0.4 * cos(t * 0.5), 0.5 + 0.4 * sin(t * 0.2));
+          vec2 p3 = vec2(0.5 + 0.2 * sin(t * 0.6), 0.5 + 0.2 * cos(t * 0.7));
+          vec2 p4 = vec2(0.5 + 0.3 * cos(t * 0.3), 0.5 + 0.2 * sin(t * 0.5));
+          vec2 p5 = vec2(0.5 + 0.4 * sin(t * 0.2), 0.5 + 0.3 * cos(t * 0.4));
 
-          Object.assign(config, data);
 
-          // Update shader uniforms
-          glassMat.uniforms.uStripesCount.value = config.stripesCount;
-          glassMat.uniforms.uRefractionStrength.value =
-            config.refractionStrength;
-          glassMat.uniforms.uBlurStrength.value = config.blurStrength;
-          glassMat.uniforms.uShatterX.value = config.shatterX;
-          glassMat.uniforms.uShatterY.value = config.shatterY;
-          glassMat.uniforms.uGlassColor.value.set(config.glassColor);
-          glassMat.uniforms.uGlassOpacity.value = config.glassOpacity;
-          glassMat.uniforms.uGrainStrength.value = config.grainStrength;
+          // Paralax
+          vec2 refraction = mix(warpNoise * uWarpStrength, -warpNoise * (uWarpStrength * 0.2), 0.0);
+          vec2 finalUv = aspectUv + refraction;
 
-          bottomMat.uniforms.uSpeed.value = config.blobSpeed;
-          bottomMat.uniforms.uBlobSize.value = config.blobSize;
-          bottomMat.uniforms.uColor1.value.set(config.color1);
-          bottomMat.uniforms.uColor2.value.set(config.color2);
-          bottomMat.uniforms.uColor3.value.set(config.color3);
+          float R = uCloudSize;
+          float d1 = smoothstep(R, 0.0, length(finalUv - p1));
+          float d2 = smoothstep(R, 0.0, length(finalUv - p2));
+          float d3 = smoothstep(R, 0.0, length(finalUv - p3));
+          float d4 = smoothstep(R, 0.0, length(finalUv - p4));
+          float d5 = smoothstep(R, 0.0, length(finalUv - p5));
 
-          bottomMat.uniforms.uMaskOffset.value.set(
-            config.maskOffsetX,
-            config.maskOffsetY,
-          );
-          bottomMat.uniforms.uMaskScale.value.set(
-            config.maskScaleX,
-            config.maskScaleY,
-          );
+          float d = max(d1, max(d2, max(d3, max(d4, d5))));
+          float blobs = smoothstep(0.7, 0.9, d);
 
-          document.querySelector("body").style.color = config.textColor;
-          gui.controllersRecursive().forEach((c) => c.updateDisplay());
+          vec3 colorBg = vec3(0.0, 0.02745, 0.1843);
 
-          const updateMaskTexture = (src) => {
-            const previewContainer = document.getElementById("top-preview");
-            if (!src) {
-              bottomMat.uniforms.uMask.value = defaultMask;
-              previewContainer.innerHTML = "";
-              return;
-            }
-            const img = new Image();
-            img.onload = () => {
-              const tex = new THREE.Texture(img);
-              tex.colorSpace = THREE.SRGBColorSpace;
-              tex.needsUpdate = true;
-              bottomMat.uniforms.uMask.value = tex;
-              previewContainer.innerHTML = `<img src="${src}" /><div class="remove-btn">x</div>`;
-              previewContainer.querySelector(".remove-btn").onclick = () => {
-                bottomMat.uniforms.uMask.value = defaultMask;
-                previewContainer.innerHTML = "";
-              };
-            };
-            img.src = src;
-          };
-          updateMaskTexture(data.topImage);
+          vec2 noiseOffset = vec2(t * 0.1, t * 0.05);
 
-          const updateTexture = (src, mat, previewId) => {
-            const previewContainer = document.getElementById(previewId);
+          float cloudNoise = fbm(finalUv * uCloudDensity - noiseOffset);
 
-            // Clear images if there's no image saved in .json
-            if (!src) {
-              if (mat.map) {
-                mat.map.dispose();
-                mat.map = null;
-              }
-              mat.visible = false;
-              previewContainer.innerHTML = "";
-              return;
-            }
+          float intensity = clamp(d * 0.8 + cloudNoise * 0.2, 0.0, 1.0);
 
-            // Otherwise load the image
-            const img = new Image();
-            img.onload = () => {
-              const tex = new THREE.Texture(img);
-              tex.colorSpace = THREE.SRGBColorSpace;
-              tex.needsUpdate = true;
+          vec3 blobsColor = texture2D(uGradientMap, vec2(intensity, 0.5)).rgb;
 
-              if (mat.map) mat.map.dispose();
-              mat.map = tex;
-              mat.visible = true;
+          vec3 finalColor = mix(blobsColor, colorBg, 0.0);
 
-              previewContainer.innerHTML = `
-          <img src="${src}" />
-          <div class="remove-btn">x</div>
-        `;
-
-              previewContainer.querySelector(".remove-btn").onclick = () => {
-                bottomMat.uniforms.uMask.value = defaultMask;
-                previewContainer.innerHTML = "";
-              };
-            };
-            img.src = src;
-          };
-
-          // updateTexture(data.bottomImage, bottomMat, "bottom-preview");
-          // updateTexture(data.topImage, topMat, "top-preview");
-        };
-        reader.readAsText(file);
+          gl_FragColor = vec4(finalColor, 1.0);
       }
+      `,
+      });
 
-      // --- ANIMATION & TWO-PASS RENDER LOOP ---
+      // Creating the noise texture
+      const noiseScene = new THREE.Scene();
+      const noiseCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+      const noiseMaterial = new THREE.ShaderMaterial({
+        vertexShader: vertexShader,
+        fragmentShader: noiseFragmentShader,
+        uniforms: {
+          uTime: { value: 0 },
+        },
+      });
+
+      const noiseQuad = new THREE.Mesh(
+        new THREE.PlaneGeometry(2, 2),
+        noiseMaterial,
+      );
+      noiseScene.add(noiseQuad);
+
+      const gradientPlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(2, 2),
+        gradientMaterial,
+      );
+
+      scene.add(gradientPlane);
+
+      // ======================================================
+      // GUI
+      // ======================================================
+
+      const gui = new GUI();
+
+      gui
+        .add(config, "stripesCount", 1, 100, 1)
+        .onChange((v) => (glassMaterial.uniforms.uStripesCount.value = v));
+
+      gui.add(config, "reedStrength", 0, 1).onChange((v) => {
+        glassMaterial.uniforms.uReedStrength.value = v;
+      });
+
+      gui.add(config, "chromaticStrength", 0, 1).onChange((v) => {
+        glassMaterial.uniforms.uChromaticStrength.value = v;
+      });
+      gui
+        .add(config, "blurStrength", 0, 100)
+        .onChange((v) => (glassMaterial.uniforms.uBlurStrength.value = v));
+
+      gui
+        .addColor(config, "glassColor")
+        .onChange((v) => glassMaterial.uniforms.uGlassColor.value.set(v));
+
+      gui
+        .add(config, "glassOpacity", 0, 1)
+        .onChange((v) => (glassMaterial.uniforms.uGlassOpacity.value = v));
+
+      gui
+        .add(config, "grainStrength", 0, 0.2)
+        .onChange((v) => (glassMaterial.uniforms.uGrainStrength.value = v));
+
+      gui
+        .add(config, "warpStrength", 0, 2)
+        .onChange((v) => (gradientMaterial.uniforms.uWarpStrength.value = v));
+
+      gui
+        .add(config, "gradientSpeed", 0, 2)
+        .onChange((v) => (config.gradientSpeed = v));
+
+      gui
+        .add(config, "cloudDensity", 0, 5)
+        .onChange((v) => (gradientMaterial.uniforms.uCloudDensity.value = v));
+
+      gui
+        .add(config, "cloudSize", 0, 4)
+        .onChange((v) => (gradientMaterial.uniforms.uCloudSize.value = v));
+
+      // ======================================================
+      // RESIZE
+      // ======================================================
+
+      window.addEventListener("resize", () => {
+        const aspect = innerWidth / innerHeight;
+
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+        renderTarget.setSize(innerWidth, innerHeight);
+
+        gradientMaterial.uniforms.uAspect.value = aspect;
+        glassMaterial.uniforms.uResolution.value.set(innerWidth, innerHeight);
+      });
+
+      // ======================================================
+      // LOOP
+      // ======================================================
+
+      let lastTime = performance.now();
+      let accumulatedTime = 0.0;
+
       function animate() {
         requestAnimationFrame(animate);
 
-        // Camera drift loop (Lemniscate of Bernoulli)
-        const time = performance.now() * config.autoSpeed;
-        const autoX = Math.sin(time) * config.autoIntensityX;
-        const autoY = (Math.sin(time * 2) / 2) * config.autoIntensityY;
+        const currentTime = performance.now();
+        const delta = (currentTime - lastTime) * 0.001;
+        lastTime = currentTime;
 
-        // Pass uniforms to the metaball shader
-        bottomMat.uniforms.uTime.value = performance.now() * 0.001;
+        accumulatedTime += delta * config.gradientSpeed;
 
-        // Camera lerp
-        targetCamera.x = mouse.x * config.mouseIntensityX + autoX;
-        targetCamera.y = mouse.y * config.mouseIntensityY + autoY;
+        noiseMaterial.uniforms.uTime.value = accumulatedTime;
 
-        camera.position.x +=
-          (targetCamera.x - camera.position.x) * config.mouseEase;
-        camera.position.y +=
-          (targetCamera.y - camera.position.y) * config.mouseEase;
+        glassMaterial.uniforms.uTime.value = accumulatedTime;
 
-        camera.position.z = config.cameraDistance;
+        gradientMaterial.uniforms.uTime.value = accumulatedTime;
 
-        // Camera focus on the scene center
-        camera.lookAt(0, 0, 0);
+        // Generate noise
+        renderer.setRenderTarget(noiseTarget);
+        renderer.render(noiseScene, noiseCamera);
 
-        // Render background only to the renderTarget buffer
-        glassMesh.visible = false;
+        // Render background
         renderer.setRenderTarget(renderTarget);
+
         renderer.render(scene, camera);
 
-        // Pass rendered background to the shader and apply glass effect
-        glassMat.uniforms.uTransmissionMap.value = renderTarget.texture;
-        glassMesh.visible = true;
+        // Final render with glass shader
+        glassMaterial.uniforms.uScene.value = renderTarget.texture;
+
         renderer.setRenderTarget(null);
-        renderer.render(scene, camera);
+
+        renderer.render(quadScene, quadCamera);
       }
 
       animate();
