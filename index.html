@@ -184,7 +184,6 @@
 
       // ======================================================
       // SOURCE SCENE
-      // TU BĘDĄ TWOJE OBIEKTY
       // ======================================================
 
       const scene = new THREE.Scene();
@@ -567,12 +566,30 @@
       `,
       });
 
-      const testPlane = new THREE.Mesh(
+      // Creating the noise texture
+      const noiseScene = new THREE.Scene();
+      const noiseCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+      const noiseMaterial = new THREE.ShaderMaterial({
+        vertexShader: vertexShader,
+        fragmentShader: noiseFragmentShader,
+        uniforms: {
+          uTime: { value: 0 },
+        },
+      });
+
+      const noiseQuad = new THREE.Mesh(
+        new THREE.PlaneGeometry(2, 2),
+        noiseMaterial,
+      );
+      noiseScene.add(noiseQuad);
+
+      const gradientPlane = new THREE.Mesh(
         new THREE.PlaneGeometry(2, 2),
         gradientMaterial,
       );
 
-      scene.add(testPlane);
+      scene.add(gradientPlane);
 
       // ======================================================
       // GUI
@@ -638,14 +655,22 @@
 
         const t = performance.now() * 0.001;
 
+        noiseMaterial.uniforms.uTime.value = t;
+
         glassMaterial.uniforms.uTime.value = t;
 
         gradientMaterial.uniforms.uTime.value = t;
 
+        // Generate noise
+        renderer.setRenderTarget(noiseTarget);
+        renderer.render(noiseScene, noiseCamera);
+
+        // Render background
         renderer.setRenderTarget(renderTarget);
 
         renderer.render(scene, camera);
 
+        // Final render with glass shader
         glassMaterial.uniforms.uScene.value = renderTarget.texture;
 
         renderer.setRenderTarget(null);
