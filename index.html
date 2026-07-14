@@ -154,8 +154,9 @@
 
         grainStrength: 0.04,
         warpStrength: 0.6,
-        gradientSpeed: 1.0,
-        cloudDensity: 1.0,
+        gradientSpeed: 0.12,
+        cloudDensity: 3.0,
+        cloudSize: 1.0,
       };
       // ======================================================
       // RENDERER
@@ -438,17 +439,10 @@
 
         const grad = ctx.createLinearGradient(0, 0, 512, 0);
 
-        //        grad.addColorStop(0.0, "rgb(15, 10, 25)"); // Bardzo ciemny, aksamitny śliwkowy fiolet
-        //        grad.addColorStop(0.35, "rgb(20, 45, 75)"); // Stonowany, stalowy granat
-        //        grad.addColorStop(0.65, "rgb(0, 180, 185)"); // Przydymiony, szlachetny turkus (cyan)
-        //        grad.addColorStop(0.85, "rgb(235, 140, 50)"); // Głęboki, miodowy ugier / ciepły bursztyn
-        //        grad.addColorStop(1.0, "rgb(250, 210, 150)"); // Jasny, ciepły beż
-        //
-        grad.addColorStop(0.0, "rgb(8, 12, 28)"); // Bardzo głęboki, elegancki granat (tło)
-        grad.addColorStop(0.4, "rgb(31, 62, 214)"); // Nasycony, czysty błękit kobaltowy
-        grad.addColorStop(0.7, "rgb(240, 110, 80)"); // Miękki, zgaszony pomarańcz / terakota
-        grad.addColorStop(0.9, "rgb(245, 235, 220)"); // Ciepła, luksusowa biel alabastrowa
-        grad.addColorStop(1.0, "rgb(255, 250, 245)"); // Najjaśniejszy punkt rozbłysku
+        grad.addColorStop(0.0, "rgb(10, 10, 12)");
+        grad.addColorStop(0.9, "rgb(245, 235, 220)");
+        grad.addColorStop(0.5, "rgb(31, 62, 214)");
+
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, 512, 1);
 
@@ -469,6 +463,9 @@
           },
           uCloudDensity: {
             value: config.cloudDensity,
+          },
+          uCloudSize: {
+            value: config.cloudSize,
           },
           uWarpStrength: { value: config.warpStrength },
           uGradientMap: { value: gradientTexture },
@@ -501,6 +498,7 @@
       uniform float uWarpStrength;
       uniform sampler2D uGradientMap;
       uniform float uAspect;
+      uniform float uCloudSize;
 
       float hash(vec2 p) {
           return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
@@ -542,7 +540,7 @@
           vec2 refraction = mix(warpNoise * uWarpStrength, -warpNoise * (uWarpStrength * 0.2), 0.0);
           vec2 finalUv = aspectUv + refraction;
 
-          float R = 0.6;
+          float R = uCloudSize;
           float d1 = smoothstep(R, 0.0, length(finalUv - p1));
           float d2 = smoothstep(R, 0.0, length(finalUv - p2));
           float d3 = smoothstep(R, 0.0, length(finalUv - p3));
@@ -638,6 +636,10 @@
       gui
         .add(config, "cloudDensity", 0, 5)
         .onChange((v) => (gradientMaterial.uniforms.uCloudDensity.value = v));
+
+      gui
+        .add(config, "cloudSize", 0, 4)
+        .onChange((v) => (gradientMaterial.uniforms.uCloudSize.value = v));
 
       // ======================================================
       // RESIZE
