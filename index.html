@@ -155,6 +155,7 @@
         grainStrength: 0.04,
         warpStrength: 0.6,
         gradientSpeed: 1.0,
+        cloudDensity: 1.0,
       };
       // ======================================================
       // RENDERER
@@ -437,12 +438,17 @@
 
         const grad = ctx.createLinearGradient(0, 0, 512, 0);
 
-        grad.addColorStop(0.0, "rgb(8, 6, 5)");
-        grad.addColorStop(0.2, "rgb(31, 62, 254)");
-        grad.addColorStop(0.45, "rgb(253, 239, 48)");
-        grad.addColorStop(0.6, "rgb(154, 75, 246)");
-        grad.addColorStop(0.8, "rgb(255, 91, 32)");
-
+        //        grad.addColorStop(0.0, "rgb(15, 10, 25)"); // Bardzo ciemny, aksamitny śliwkowy fiolet
+        //        grad.addColorStop(0.35, "rgb(20, 45, 75)"); // Stonowany, stalowy granat
+        //        grad.addColorStop(0.65, "rgb(0, 180, 185)"); // Przydymiony, szlachetny turkus (cyan)
+        //        grad.addColorStop(0.85, "rgb(235, 140, 50)"); // Głęboki, miodowy ugier / ciepły bursztyn
+        //        grad.addColorStop(1.0, "rgb(250, 210, 150)"); // Jasny, ciepły beż
+        //
+        grad.addColorStop(0.0, "rgb(8, 12, 28)"); // Bardzo głęboki, elegancki granat (tło)
+        grad.addColorStop(0.4, "rgb(31, 62, 214)"); // Nasycony, czysty błękit kobaltowy
+        grad.addColorStop(0.7, "rgb(240, 110, 80)"); // Miękki, zgaszony pomarańcz / terakota
+        grad.addColorStop(0.9, "rgb(245, 235, 220)"); // Ciepła, luksusowa biel alabastrowa
+        grad.addColorStop(1.0, "rgb(255, 250, 245)"); // Najjaśniejszy punkt rozbłysku
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, 512, 1);
 
@@ -458,11 +464,11 @@
           uTime: {
             value: 0,
           },
-          uSpeed: {
-            value: 1.0,
-          },
           uNoiseMap: {
             value: noiseTarget.texture,
+          },
+          uCloudDensity: {
+            value: config.cloudDensity,
           },
           uWarpStrength: { value: config.warpStrength },
           uGradientMap: { value: gradientTexture },
@@ -490,7 +496,7 @@
       precision highp float;
       varying vec2 vUv;
       uniform float uTime;
-      uniform float uSpeed;
+      uniform float uCloudDensity;
       uniform sampler2D uNoiseMap;
       uniform float uWarpStrength;
       uniform sampler2D uGradientMap;
@@ -546,13 +552,15 @@
           float d = max(d1, max(d2, max(d3, max(d4, d5))));
           float blobs = smoothstep(0.7, 0.9, d);
 
-          vec3 colorBg = vec3(0.0, 0.02745, 0.1843); 
+          vec3 colorBg = vec3(0.0, 0.02745, 0.1843);
 
-          float pulse = sin(uTime * uSpeed * 2.0) * 0.5 + 0.5;
-          float intensity = clamp(d * 0.8 + pulse * 0.4, 0.0, 1.0);
+          vec2 noiseOffset = vec2(t * 0.1, t * 0.05);
+
+          float cloudNoise = fbm(finalUv * uCloudDensity - noiseOffset);
+
+          float intensity = clamp(d * 0.5 + cloudNoise * 0.5, 0.0, 1.0);
+
           vec3 blobsColor = texture2D(uGradientMap, vec2(intensity, 0.5)).rgb;
-          float mask = step(0.05, d);
-          blobsColor = mix(colorBg, blobsColor, mask);
 
           vec3 finalColor = mix(blobsColor, colorBg, 0.0);
 
@@ -625,7 +633,11 @@
 
       gui
         .add(config, "gradientSpeed", 0, 2)
-        .onChange((v) => (gradientMaterial.uniforms.uSpeed.value = v));
+        .onChange((v) => (config.gradientSpeed = v));
+
+      gui
+        .add(config, "cloudDensity", 0, 5)
+        .onChange((v) => (gradientMaterial.uniforms.uCloudDensity.value = v));
 
       // ======================================================
       // RESIZE
@@ -646,16 +658,23 @@
       // LOOP
       // ======================================================
 
+      let lastTime = performance.now();
+      let accumulatedTime = 0.0;
+
       function animate() {
         requestAnimationFrame(animate);
 
-        const t = performance.now() * 0.001;
+        const currentTime = performance.now();
+        const delta = (currentTime - lastTime) * 0.001;
+        lastTime = currentTime;
 
-        noiseMaterial.uniforms.uTime.value = t;
+        accumulatedTime += delta * config.gradientSpeed;
 
-        glassMaterial.uniforms.uTime.value = t;
+        noiseMaterial.uniforms.uTime.value = accumulatedTime;
 
-        gradientMaterial.uniforms.uTime.value = t;
+        glassMaterial.uniforms.uTime.value = accumulatedTime;
+
+        gradientMaterial.uniforms.uTime.value = accumulatedTime;
 
         // Generate noise
         renderer.setRenderTarget(noiseTarget);
