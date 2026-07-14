@@ -548,8 +548,9 @@
 
           vec3 colorBg = vec3(0.0, 0.02745, 0.1843); 
 
-          float intensity = d * 1.5;
-          vec3 blobsColor = texture2D(uGradientMap, vec2(clamp(intensity, 0.0, 1.0), 0.5)).rgb;
+          float pulse = sin(uTime * uSpeed * 2.0) * 0.5 + 0.5;
+          float intensity = clamp(d * 0.8 + pulse * 0.4, 0.0, 1.0);
+          vec3 blobsColor = texture2D(uGradientMap, vec2(intensity, 0.5)).rgb;
           float mask = step(0.05, d);
           blobsColor = mix(colorBg, blobsColor, mask);
 
